@@ -1,3 +1,4 @@
+import { normalizeDecisions } from './coach/core/pending.js';
 // The server's half of the sync stamps. Hand-copied (not imported) from
 // frontend/src/lib/sync-merge.js, like queue.js: the same rules on both sides, kept as a small
 // standalone module so it can be unit-tested without booting the server, and checked against the
@@ -442,7 +443,7 @@ export function mergeCoach(win, other) {
     else if (list(out.log).length > 1) out.log.shift();
     else break;
   }
-  return out;
+  return normalizeDecisions(out);
 }
 
 const ORDER_KEY = 'routineOrder';
@@ -624,5 +625,10 @@ export function stampPut(cur, next, { overRead = false, stamped = false, now = D
   }
   keepHeld(next, t);
   if (cur && !reset) notePrior(cur, next);
+  if (next.coach) {
+    const repaired = normalizeDecisions(next.coach);
+    if (repaired !== next.coach && report) report.changed = true;
+    next.coach = repaired;
+  }
   return next;
 }

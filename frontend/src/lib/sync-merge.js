@@ -1,3 +1,4 @@
+import { normalizeDecisions } from '../../../api/coach/core/pending.js';
 /* Two copies of the account state, one merged copy.
  *
  * The server refuses a push over a document the device never saw (PUT /api/data with a stale
@@ -307,7 +308,7 @@ export function mergeCoach(win, other) {
     else if (list(out.log).length > 1) out.log.shift()
     else break
   }
-  return out
+  return normalizeDecisions(out)
 }
 
 // ---- Entries merged field by field ----------------------------------------------------------
