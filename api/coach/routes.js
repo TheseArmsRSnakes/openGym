@@ -171,6 +171,7 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       const user = guard(req, res); if (!user) return;
       const body = await readBody(req);
       json(res, 200, jobs.resolvePending(user.id, {
+        proposalId: typeof body.proposalId === 'string' ? body.proposalId : undefined,
         accepted: Array.isArray(body.accepted) ? body.accepted : [],
         rejected: Array.isArray(body.rejected) ? body.rejected : [],
         dismissed: !!body.dismissed

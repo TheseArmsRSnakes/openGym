@@ -182,6 +182,29 @@ describe('the Coach chat', () => {
     expect(mocks.S.coach.log.at(-1).decisions.map(d => d.status)).toEqual(['accepted', 'rejected'])
   })
 
+  it('hides an accepted proposal while an old status response still returns it', async () => {
+    await mount({ id: 'delayed', kind: 'review', summary: 's', changes: [
+      { id: 'a', type: 'week', target: { weekday: 1 }, before: null, after: null, why: 'rest' }
+    ] })
+    await click(byText(/Apply 1 change/))
+    await act(async () => { root.render(React.createElement(CoachChat)) })
+    expect(byText(/Apply nothing|Dismiss all|Apply 1 change/)).toBeUndefined()
+    expect(mocks.S.coach.log).toHaveLength(1)
+    expect(mocks.S.coach.log[0].decisions[0].status).toBe('accepted')
+    expect(container.querySelector('.recap').textContent).toContain('1 accepted')
+  })
+
+  it('resolves exercise ids to names in existing explanations and notes', async () => {
+    const S = state()
+    S.routines = [{ id: 'push', name: 'Push', ex: [{ id: '0025', sets: 2, reps: 8 }] }]
+    await mount({ id: 'named', kind: 'review', summary: '0025 needs rest.', notes: ['For 0025, use two sets.'], changes: [
+      { id: 'a', type: 'sets', target: { routineId: 'push', exId: '0025' }, before: 2, after: 1, why: '0025 missed its target.' }
+    ] }, null, { S })
+    expect(container.querySelector('.pcard-chg-w').textContent).toMatch(/Barbell Bench Press.*missed/)
+    expect(container.querySelector('.pcard-notes').textContent).toContain('Barbell Bench Press')
+    expect(container.textContent).not.toContain('0025')
+  })
+
   it('keeps an applied review in the thread as a card that opens the whole proposal', async () => {
     await mount({ id: 'r1', kind: 'review', summary: 'a reading', changes: [
       { id: 'a', type: 'week', target: { weekday: 1 }, before: null, after: null, why: 'rest' },

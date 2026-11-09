@@ -28,7 +28,7 @@ import ChatInput from '../components/ChatInput.jsx'
 import {
   coachAvailable, hasConsent, emptyCoach, appendChat, recordTiming, estimateMs, profileLines,
   markStale, applicable, applyChangeSet, applyCreatedPlan, recordDismissal, recordDebrief, logEntry,
-  changeTitle, changeValues, changeMeaning, exName, canRevert, revertLast
+  changeTitle, changeValues, changeMeaning, exName, coachText, canRevert, revertLast
 } from '../lib/coach.js'
 import { AdaptProposal, adaptTitle } from '../components/WorkoutCoachSheet.jsx'
 import { insightsFor, sessionInsights } from '../lib/coach-insights.js'
@@ -52,7 +52,10 @@ export default function CoachChat() {
   const storeReady = useStore(s => s.ready)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
-  const { job, pending, cap, loading, lastError, last, refresh, maxMessageLen } = useCoachStatus(true)
+  const { job, pending: serverPending, cap, loading, lastError, last, refresh, maxMessageLen } = useCoachStatus(true)
+  // A saved decision wins over a stale poll response while the server clears its slot.
+  const pending = serverPending && !(S.coach?.log || []).some(e => e.proposalId === serverPending.id)
+    ? serverPending : null
   const [text, setText] = useState('')
   // The message box opened into a tall editor (components/ChatInput.jsx); closed again on send.
   const [expanded, setExpanded] = useState(false)
@@ -115,7 +118,7 @@ export default function CoachChat() {
       if ((s.coach?.chat || []).some(m => m.pid === pending.id)) return
       appendChat(s, { role: 'coach', kind: 'text', text: String(pending.answer || ''), pid: pending.id })
     })
-    resolvePending({ accepted: ['ask'] }).catch(() => {}).finally(() => refresh())
+    resolvePending({ proposalId: pending.id, accepted: ['ask'] }).catch(() => {}).finally(() => refresh())
   }, [pending?.id, !!job])
 
   useEffect(() => { if (typeof endRef.current?.scrollIntoView === 'function') endRef.current.scrollIntoView({ block: 'end' }) }, [S.coach?.chat?.length, !!job, !!pending])
@@ -239,7 +242,7 @@ export default function CoachChat() {
         ? <PlanCard p={pending} S={S} update={update} toast={toast} nav={nav} refresh={refresh} />
         : pending.kind === 'debrief'
           ? <DebriefCard p={pending} S={S} update={update} toast={toast} refresh={refresh} />
-          : <ReviewCard p={pending} S={S} update={update} toast={toast} refresh={refresh} />)}
+          : <ReviewCard key={pending.id} p={pending} S={S} update={update} toast={toast} refresh={refresh} />)}
 
       <div ref={endRef} />
     </div>
@@ -282,13 +285,13 @@ function Message({ m, S, profile, openSheet }) {
   if (m.kind === 'applied' || m.kind === 'dismissed' || m.kind === 'debrief') {
     const entry = m.ref ? logEntry(S, m.ref) : null
     return <div className="msg coach" style={entry ? { maxWidth: '100%', width: '100%' } : undefined}>
-      {!!m.text && <div className="bub">{m.text}</div>}
+      {!!m.text && <div className="bub">{coachText(m.text, S)}</div>}
       {entry && <Recap entry={entry} S={S} openSheet={openSheet} />}
       {m.at && <div className="msg-t">{stamp(m.at)}</div>}
     </div>
   }
   if (m.kind === 'reverted' || m.kind === 'nochange' || m.kind === 'error' || m.kind === 'text') {
-    return <Bubble role={m.role} kind={m.kind} at={m.at}>{m.text}</Bubble>
+    return <Bubble role={m.role} kind={m.kind} at={m.at}>{m.role === 'coach' ? coachText(m.text, S) : m.text}</Bubble>
   }
   return null
 }
@@ -346,7 +349,7 @@ function PlanCard({ p, S, update, toast, nav, refresh }) {
           ? t('Imported! {0} routines are in your plan and your week is set. See you at the next session.', n)
           : t('Imported! {0} routines are in your plan. Your week is unchanged; schedule them whenever you like.', n) })
       })
-      resolvePending({ accepted: ['plan'] }).catch(() => {})
+      resolvePending({ proposalId: p.id, accepted: ['plan'] }).catch(() => {})
       toast(t('Your plan is live'))
       refresh()
     } catch (e) { toast(e.message || t('That proposal can’t be read.')) }
@@ -356,7 +359,7 @@ function PlanCard({ p, S, update, toast, nav, refresh }) {
     confirmText: t('Discard'), danger: true,
     onConfirm: () => {
       update(s => { const ref = recordDismissal(s, p); appendChat(s, { role: 'coach', kind: 'dismissed', ref, text: t('Discarded. Tell me what was off and I will build a different one.') }) })
-      resolvePending({ dismissed: true }).catch(() => {})
+      resolvePending({ proposalId: p.id, dismissed: true }).catch(() => {})
       refresh()
     }
   })
@@ -425,7 +428,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
         const res = applyChangeSet(s, marked, ids)
         appendChat(s, { role: 'coach', kind: 'applied', ref: res.logId, text: tn('Applied {0} change to your plan.', 'Applied {0} changes to your plan.', ids.length) })
       })
-      resolvePending({ accepted: ids, rejected: marked.changes.filter(c => !ids.includes(c.id)).map(c => c.id) }).catch(() => {})
+      resolvePending({ proposalId: p.id, accepted: ids, rejected: marked.changes.filter(c => !ids.includes(c.id)).map(c => c.id) }).catch(() => {}).finally(refresh)
       toast(tn('{0} change applied', '{0} changes applied', ids.length))
       refresh()
     } catch (e) { toast(e.message || t('Could not apply those changes')) }
@@ -435,7 +438,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
     confirmText: t('Dismiss'), danger: true,
     onConfirm: () => {
       update(s => { const ref = recordDismissal(s, marked); appendChat(s, { role: 'coach', kind: 'dismissed', ref, text: t('Got it. I won’t suggest these again without new evidence.') }) })
-      resolvePending({ dismissed: true }).catch(() => {})
+      resolvePending({ proposalId: p.id, dismissed: true }).catch(() => {})
       refresh()
     }
   })
@@ -445,7 +448,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
       <div className="pcard-hd">
         <div className="pcard-eyebrow">{t('Suggestions')}</div>
         <h2 className="pcard-h">{tn('{0} suggestion', '{0} suggestions', marked.changes.length)}</h2>
-        {!!marked.summary && <p className="pcard-sum">{marked.summary}</p>}
+        {!!marked.summary && <p className="pcard-sum">{coachText(marked.summary, S)}</p>}
         {!!marked.evidence?.sessions && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>
           {t('Based on your last {0} sessions', marked.evidence.sessions)}{marked.evidence.from ? ` · ${fmtDate(marked.evidence.from)} – ${fmtDate(marked.evidence.to)}` : ''}
         </p>}
@@ -463,7 +466,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
         </ChangeRow>
       })}
 
-      <Notes notes={marked.notes} />
+      <Notes S={S} notes={marked.notes} />
 
       <div className="pcard-note">{t('The Coach is not a doctor or a physiotherapist. If something hurts, ask a professional.')}</div>
       <div className="pcard-ft">
@@ -482,7 +485,7 @@ function ChangeRow({ c, S, stale, badge, children }) {
     <div className="grow">
       <div className="pcard-chg-t">{changeTitle(c, S)}{c.routineName ? <span className="dim" style={{ fontWeight: 400 }}> · {c.routineName}</span> : null}</div>
       {vals && <div className="pcard-chg-v"><span className="tag">{vals.before}</span><Icon name="chevronRight" style={{ fontSize: 'var(--fs-caption)', color: 'var(--label-3)' }} /><span className="tag acc">{vals.after}</span></div>}
-      <div className="pcard-chg-w">{c.why}</div>
+      <div className="pcard-chg-w">{coachText(c.why, S)}</div>
       {/* What the change means at the gym, in the app's own words (lib/coach.js changeMeaning). */}
       {changeMeaning(c) && <div className="pcard-chg-m small dim">{changeMeaning(c)}</div>}
       {stale && <div className="pcard-chg-stale">{t('Doesn’t match your plan any more, so it can’t be applied.')}</div>}
@@ -492,8 +495,9 @@ function ChangeRow({ c, S, stale, badge, children }) {
   </div>
 }
 
-const Notes = ({ notes }) => !!notes?.length && <div className="pcard-notes">
-  {notes.map((n, i) => <div key={i}><Icon name="lightbulb" />{n}</div>)}
+const Notes = ({ notes, S }) => !!notes?.length && <div className="pcard-notes">
+  <div className="small dim">{t('Notes · information only')}</div>
+  {notes.map((n, i) => <div key={i}><Icon name="lightbulb" />{coachText(n, S)}</div>)}
 </div>
 
 /* ---------------------------------- insights ---------------------------------- */
@@ -598,7 +602,7 @@ const scoreWord = s => s >= 9 ? t('Excellent session') : s >= 7 ? t('Good sessio
 function DebriefCard({ p, S, update, toast, refresh }) {
   const done = () => {
     update(s => { const ref = recordDebrief(s, p); appendChat(s, { role: 'coach', kind: 'debrief', ref, text: '' }) })
-    resolvePending({ accepted: ['debrief'] }).catch(() => {})
+    resolvePending({ proposalId: p.id, accepted: ['debrief'] }).catch(() => {})
     toast(t('Kept in your Coach history'))
     refresh()
   }
@@ -641,7 +645,7 @@ function Recap({ entry, S, openSheet }) {
       {state && <span className={'recap-state ' + state.cls}>{state.text}</span>}
     </div>
     <div className="recap-t">{title}</div>
-    {!!entry.summary && <div className="recap-s">{entry.summary}</div>}
+    {!!entry.summary && <div className="recap-s">{coachText(entry.summary, S)}</div>}
     {kind === 'review' && !!decisions.length && <div className="recap-chips">
       {decisions.slice(0, 4).map(d => <span key={d.id} className={'recap-chip ' + (d.status === 'accepted' ? 'yes' : 'no')}><Icon name={d.status === 'accepted' ? 'check' : 'xmark'} />{changeTitle(d, S)}</span>)}
       {decisions.length > 4 && <span className="recap-chip">+{decisions.length - 4}</span>}
@@ -661,7 +665,7 @@ function ProposalDetail({ entry, S }) {
     <div className="pcard-hd" style={{ paddingInline: 0 }}>
       <div className="pcard-eyebrow">{kind === 'create' ? t('Plan') : kind === 'debrief' ? t('Workout debrief') : kind === 'adapt' ? t('For this workout') : t('Suggestions')} · {fmtDate(isoOf(new Date(entry.at)))}</div>
       <h2 className="pcard-h">{kind === 'create' ? (b?.name || t('Coach plan')) : kind === 'debrief' ? (entry.workout?.name || t('Workout')) : tn('{0} suggestion', '{0} suggestions', entry.decisions?.length || 0)}</h2>
-      {!!entry.summary && <p className="pcard-sum">{entry.summary}</p>}
+      {!!entry.summary && <p className="pcard-sum">{coachText(entry.summary, S)}</p>}
       {entry.dismissed && <p className="pcard-sum" style={{ color: 'var(--red)' }}>{t('You declined this.')}</p>}
       {!!entry.evidence?.sessions && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>
         {t('Based on your last {0} sessions', entry.evidence.sessions)}{entry.evidence.from ? ` · ${fmtDate(entry.evidence.from)} – ${fmtDate(entry.evidence.to)}` : ''}
@@ -672,7 +676,7 @@ function ProposalDetail({ entry, S }) {
       <Insights S={S} window={entry.evidence} />
       {(entry.decisions || []).map(d => <ChangeRow key={d.id} c={d} S={S} stale={d.status === 'stale'}
         badge={<span className={'recap-state ' + (d.status === 'accepted' ? 'yes' : 'no')}>{d.status === 'accepted' ? t('Accepted') : d.status === 'stale' ? t('Expired') : t('Declined')}</span>} />)}
-      <Notes notes={entry.notes} />
+      <Notes S={S} notes={entry.notes} />
     </>}
 
     {kind === 'create' && b && <>

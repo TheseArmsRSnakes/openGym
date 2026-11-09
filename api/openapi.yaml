@@ -3478,6 +3478,9 @@ paths:
             schema:
               type: object
               properties:
+                proposalId:
+                  type: string
+                  description: Only resolve this proposal; repeated or outdated acknowledgements are no-ops.
                 accepted:
                   type: array
                   items: { type: string }

@@ -675,3 +675,14 @@ test('a job refused by the privilege gate does not bind the instance credential'
     cfg.save({ provider: prev.provider, authMode: prev.authMode, boundUid: prev.boundUid, auth: prev.auth });
   }
 });
+
+test('repeated answer acknowledgements do not resolve the restored review', () => {
+  const uid = 'u-resolve-identity';
+  fs.mkdirSync(DIR + '/coach', { recursive: true });
+  const review = { id: 'review-waiting', kind: 'review', changes: [] };
+  fs.writeFileSync(DIR + '/coach/' + uid + '.json', JSON.stringify({ pending: { id: 'answer', kind: 'ask', prev: review }, history: [] }));
+  jobs.resolvePending(uid, { proposalId: 'answer', accepted: ['ask'] });
+  jobs.resolvePending(uid, { proposalId: 'answer', accepted: ['ask'] });
+  assert.equal(jobs.status(uid).pending.id, review.id);
+  assert.equal(jobs.readUser(uid).history.length, 1);
+});

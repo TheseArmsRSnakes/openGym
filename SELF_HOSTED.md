@@ -24,3 +24,5 @@ Before upgrading, fetch official releases, review differences against this branc
 `COACH_CREDENTIAL_DIR=/codex` is the sole credential-directory setting. The API receives a separate mount at that location; the unprivileged Coach user must be able to read it. Provider credentials never enter Git. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Automatic review failures wait one hour before retrying, and unread proposals prevent repeat reviews.
 
 Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (exercise `1161`, Cardio). No duplicate custom exercise is necessary.
+
+Coach decisions hide a resolved proposal immediately and acknowledgements identify the proposal, so stale polls and repeated answer acknowledgements cannot dismiss another proposal. Existing ID-based explanations are displayed with exercise names, and new prompts request names in prose. Notes are informational; only explicit changes have accept/decline decisions.

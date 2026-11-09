@@ -693,6 +693,17 @@ export const exName = id => EXIDX[id]?.n || t('Unknown exercise')
 const cap = s => String(s || '').replace(/(^|\s)(\p{L})/gu, (m, sp, ch) => sp + ch.toUpperCase())
 export const exTitle = id => cap(exName(id))
 
+/** Older Coach responses sometimes use catalogue ids in prose. Resolve only exercises in
+ * this profile, preserving dates, standalone years, and unknown numbers. Stored ids stay intact. */
+export function coachText(value, S) {
+  const ids = new Set((S?.routines || []).flatMap(r => (r.ex || []).map(e => e.id)))
+  for (const w of S?.workouts || []) for (const e of w.entries || []) ids.add(e.id)
+  return String(value || '').replace(/(?<![\w./:-])\d{4,5}(?![\w/:-]|\.\d)/g, id => {
+    if (!ids.has(id) || (!id.startsWith('0') && +id >= 1900 && +id <= 2100)) return id
+    return EXIDX[id]?.n ? exTitle(id) : id
+  })
+}
+
 /** Human label for a change, used on the review screen and in the log. */
 export function changeTitle(c, S) {
   const ex = c.target?.exId ? exTitle(c.target.exId) : null
