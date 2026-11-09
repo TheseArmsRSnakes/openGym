@@ -352,3 +352,13 @@ describe('Ask the Coach mid-workout, on a phone with its own key', () => {
     expect((await local.localStatus()).pending).toBeNull()
   })
 })
+
+it('a repeated device answer acknowledgement preserves the restored review', async () => {
+  _resetCoachDevice(); local._resetLocal()
+  const review = { id: 'review', kind: 'review' }
+  device.data = { mode: 'byok', provider: 'openai', pending: { id: 'answer', kind: 'ask', prev: review } }
+  await local.localResolve({ proposalId: 'answer' })
+  expect((await loadCoachDevice()).pending.id).toBe(review.id)
+  await local.localResolve({ proposalId: 'answer' })
+  expect((await loadCoachDevice()).pending.id).toBe(review.id)
+})

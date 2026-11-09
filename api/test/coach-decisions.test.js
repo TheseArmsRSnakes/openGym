@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDecisions } from '../coach/core/pending.js';
+import { normalizeDecisions, resolutionFor } from '../coach/core/pending.js';
 import { mergeCoach, stampPut } from '../sync-stamps.js';
 const accepted = { id: 'yes', proposalId: 'p', kind: 'review', at: 10, decisions: [{ status: 'accepted' }] };
 const falseDecline = { id: 'no', proposalId: 'p', kind: 'review', at: 20, dismissed: true };
@@ -20,4 +20,10 @@ test('an older device cannot restore the contradictory dismissal through a merge
   stampPut({ coach: clean }, next, { stamped: true, report });
   assert.deepEqual(next.coach.log, [accepted]);
   assert.equal(report.changed, true);
+});
+
+test('malformed legacy history cannot turn status polling into a server error', () => {
+  assert.equal(resolutionFor({ id: 'p', kind: 'review' }, { log: 'old' }), null);
+  assert.equal(resolutionFor({ id: 'p', kind: 'ask' }, { chat: {} }), null);
+  assert.equal(resolutionFor({ id: 'p', kind: 'review' }, { log: [null] }), null);
 });

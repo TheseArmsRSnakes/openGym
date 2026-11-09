@@ -686,3 +686,31 @@ test('repeated answer acknowledgements do not resolve the restored review', () =
   assert.equal(jobs.status(uid).pending.id, review.id);
   assert.equal(jobs.readUser(uid).history.length, 1);
 });
+
+test('saved decisions recover a lost acknowledgement even with the app closed', () => {
+  const uid = 'u-offline-resolution';
+  const S = sampleState({ coach: { log: [{ id: 'saved', proposalId: 'p', kind: 'review', decisions: [
+    { id: 'c1', status: 'accepted' }, { id: 'c2', status: 'rejected' }
+  ] }] } });
+  writeState(DIR, uid, S);
+  fs.mkdirSync(DIR + '/coach', { recursive: true });
+  fs.writeFileSync(DIR + '/coach/' + uid + '.json', JSON.stringify({ pending: { id: 'p', kind: 'review' }, history: [] }));
+  const before = fs.readFileSync(DIR + '/state-' + uid + '.json', 'utf8');
+  assert.equal(jobs.status(uid).pending, null);
+  assert.deepEqual(jobs.readUser(uid).history.map(h => [h.outcome, h.accepted, h.rejected]), [['applied', 1, 1]]);
+  jobs.status(uid);
+  assert.equal(jobs.readUser(uid).history.length, 1);
+  assert.equal(fs.readFileSync(DIR + '/state-' + uid + '.json', 'utf8'), before);
+  fs.writeFileSync(DIR + '/coach/' + uid + '.json', JSON.stringify({ pending: { id: 'new', kind: 'review' }, history: [] }));
+  assert.equal(jobs.status(uid).pending.id, 'new');
+});
+
+test('read answers and their already-decided parent recover in order', () => {
+  const uid = 'u-offline-answer';
+  writeState(DIR, uid, sampleState({ coach: { chat: [{ role: 'coach', pid: 'answer' }],
+    log: [{ kind: 'review', proposalId: 'review', dismissed: true }] } }));
+  fs.mkdirSync(DIR + '/coach', { recursive: true });
+  fs.writeFileSync(DIR + '/coach/' + uid + '.json', JSON.stringify({ pending: { id: 'answer', kind: 'ask', prev: { id: 'review', kind: 'review' } }, history: [] }));
+  assert.equal(jobs.status(uid).pending, null);
+  assert.deepEqual(jobs.readUser(uid).history.map(h => [h.id, h.outcome]), [['answer', 'applied'], ['review', 'dismissed']]);
+});

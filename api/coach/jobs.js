@@ -23,7 +23,7 @@ import { runPipeline } from './core/pipeline.js';
 import { extractJSON } from './core/parse.js';
 import { hashPlan } from './core/plan-hash.js';
 import { buildPrompt } from './core/prompt.js';
-import { waitingProposal } from './core/pending.js';
+import { waitingProposal, resolutionFor } from './core/pending.js';
 import { handleFor } from './handle.js';
 import { fetchFor } from './node-fetch.js';
 import { privilegeRefusal, unprivilegedIds } from './adapters/spawn.js';
@@ -138,7 +138,16 @@ function instanceUsedToday() {
 
 /** What the client polls. Expiry is enforced lazily here rather than on a timer. */
 export function status(uid) {
-  const rec = readUser(uid);
+  let rec = readUser(uid);
+  // The client may have synced its saved decision and then lost the acknowledgement.
+  // Cadence also reads status, so this recovers even when that client has closed.
+  const coach = rec.pending ? readState(uid)?.coach : null;
+  for (let n = 0; rec.pending && n < 3; n++) {
+    const decision = resolutionFor(rec.pending, coach);
+    if (!decision) break;
+    resolvePending(uid, decision);
+    rec = readUser(uid);
+  }
   if (rec.pending && rec.pending.expiresAt && rec.pending.expiresAt < Date.now()) {
     archive(uid, rec, 'expired');
     // Same shape as every other answer: the poll that happens to be the one which expires a

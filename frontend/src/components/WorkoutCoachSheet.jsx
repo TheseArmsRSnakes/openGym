@@ -10,7 +10,7 @@ import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
 import { t, tn } from '../lib/i18n.js'
 import { fmtRest } from '../lib/duration.js'
-import { exTitle, appendLog } from '../lib/coach.js'
+import { exTitle, appendLog, coachText } from '../lib/coach.js'
 import { useCoachStatus, requestAdapt, resolvePending, jobErrorText, isDeclined } from '../lib/coach-api.js'
 import { adaptFor, markAdaptStale, applyAdapt, adaptLogEntry } from '../lib/coach-adapt.js'
 import Icon from './Icon.jsx'
@@ -85,13 +85,13 @@ export function AdaptProposal({ p, onDone }) {
     <div className="pcard-hd">
       <div className="pcard-eyebrow">{t('For this workout')}</div>
       <h2 className="pcard-h">{tn('{0} suggestion', '{0} suggestions', marked.length)}</h2>
-      {!!p.summary && <p className="pcard-sum">{p.summary}</p>}
+      {!!p.summary && <p className="pcard-sum">{coachText(p.summary, S, p)}</p>}
       {!live && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)', color: 'var(--gold-ink)' }}>{t('That workout is over, so these can’t be applied any more.')}</p>}
     </div>
     {marked.map(c => <div key={c.id} className={'pcard-chg' + (c.stale ? ' stale' : '')}>
       <div className="grow">
         <div className="pcard-chg-t">{adaptTitle(c)}</div>
-        <div className="pcard-chg-w">{c.why}</div>
+        <div className="pcard-chg-w">{coachText(c.why, S, p)}</div>
         {c.stale && live && <div className="pcard-chg-stale">{t('Your workout moved on, so this one no longer fits.')}</div>}
       </div>
       {!c.stale && <Check checked={accepted.has(c.id)} onChange={() => toggle(c.id)} label={adaptTitle(c)} />}

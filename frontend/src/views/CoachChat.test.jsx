@@ -10,7 +10,7 @@ import { todayISO } from '../lib/format.js'
 // The chat is where a plan is imported. These pin that the Import button applies the pending
 // plan through the store, writes the decision into the thread, and leaves today startable.
 const mocks = vi.hoisted(() => {
-  const state = { S: null, pending: null, job: null, community: false, maxMessageLen: 2200, nav: vi.fn(), toast: vi.fn(), openSheet: vi.fn(), refresh: vi.fn() }
+  const state = { S: null, pending: null, job: null, community: false, resolutionPending: false, maxMessageLen: 2200, nav: vi.fn(), toast: vi.fn(), openSheet: vi.fn(), refresh: vi.fn() }
   state.storeSnapshot = () => ({
     S: state.S,
     user: { id: 'u1' },
@@ -35,7 +35,7 @@ vi.mock('../store/useUI.js', () => {
 })
 vi.mock('react-router-dom', () => ({ useNavigate: () => mocks.nav }))
 vi.mock('../lib/coach-api.js', () => ({
-  useCoachStatus: () => ({ pending: mocks.pending, job: mocks.job, cap: null, loading: false, lastError: null, last: null, refresh: mocks.refresh, maxMessageLen: mocks.maxMessageLen }),
+  useCoachStatus: () => ({ pending: mocks.pending, job: mocks.job, cap: null, loading: false, lastError: null, last: null, resolutionPending: mocks.resolutionPending, refresh: mocks.refresh, maxMessageLen: mocks.maxMessageLen }),
   resolvePending: vi.fn(() => Promise.resolve({})),
   refinePlan: vi.fn(() => Promise.resolve({})),
   requestReview: vi.fn(() => Promise.resolve({})),
@@ -106,7 +106,7 @@ async function click(el) {
   await act(async () => { el.dispatchEvent(new dom.Event('click', { bubbles: true })) })
 }
 
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => { vi.clearAllMocks(); mocks.resolutionPending = false })
 afterEach(async () => {
   if (root) { await act(async () => { root.unmount() }); root = null }
   container = null; dom = null
@@ -203,6 +203,37 @@ describe('the Coach chat', () => {
     expect(container.querySelector('.pcard-chg-w').textContent).toMatch(/Barbell Bench Press.*missed/)
     expect(container.querySelector('.pcard-notes').textContent).toContain('Barbell Bench Press')
     expect(container.textContent).not.toContain('0025')
+  })
+
+  it('names exercises in unimported plan summaries and routine explanations', async () => {
+    const b = bundle(everyDay)
+    b.summary = '0025 is a useful movement.'
+    b.routines[0].ex.push({ id: '0025', sets: 2, reps: 8, why: '0025 fits your equipment.' })
+    b.routines[0].why = 'Keep 0025 in this session.'
+    await mount({ id: 'new-plan', kind: 'create', bundle: b })
+    expect(container.querySelector('.pcard-sum').textContent).toContain('Barbell Bench Press')
+    expect(container.querySelector('.pcard-why').textContent).toContain('Barbell Bench Press')
+    expect([...container.querySelectorAll('.pcard-ex-w')].at(-1).textContent).toContain('Barbell Bench Press')
+    expect(container.textContent).not.toContain('0025')
+  })
+
+  it('names exercises throughout workout debriefs', async () => {
+    const S = state()
+    S.routines = [{ id: 'push', ex: [{ id: '0025', sets: 2, reps: 8 }] }]
+    await mount({ id: 'debrief-names', kind: 'debrief', summary: '0025 improved.',
+      highlights: ['0025 went well.'], watch: ['Watch 0025.'], nextTime: ['Repeat 0025.'] }, null, { S })
+    expect(container.querySelector('.pcard-sum').textContent).toContain('Barbell Bench Press')
+    expect([...container.querySelectorAll('.deb-item')].every(x => x.textContent.includes('Barbell Bench Press'))).toBe(true)
+    expect(container.querySelectorAll('.deb-item')).toHaveLength(3)
+    expect(container.textContent).not.toContain('0025')
+  })
+
+  it('keeps a failed decision acknowledgement visible with a retry action', async () => {
+    mocks.resolutionPending = true
+    await mount(null)
+    expect(container.querySelector('[role="status"]').textContent).toContain('Your choice is saved')
+    await click(byText(/^Retry$/))
+    expect(mocks.refresh).toHaveBeenCalled()
   })
 
   it('keeps an applied review in the thread as a card that opens the whole proposal', async () => {

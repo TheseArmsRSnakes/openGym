@@ -693,14 +693,31 @@ export const exName = id => EXIDX[id]?.n || t('Unknown exercise')
 const cap = s => String(s || '').replace(/(^|\s)(\p{L})/gu, (m, sp, ch) => sp + ch.toUpperCase())
 export const exTitle = id => cap(exName(id))
 
-/** Older Coach responses sometimes use catalogue ids in prose. Resolve only exercises in
- * this profile, preserving dates, standalone years, and unknown numbers. Stored ids stay intact. */
-export function coachText(value, S) {
-  const ids = new Set((S?.routines || []).flatMap(r => (r.ex || []).map(e => e.id)))
-  for (const w of S?.workouts || []) for (const e of w.entries || []) ids.add(e.id)
-  return String(value || '').replace(/(?<![\w./:-])\d{4,5}(?![\w/:-]|\.\d)/g, id => {
-    if (!ids.has(id) || (!id.startsWith('0') && +id >= 1900 && +id <= 2100)) return id
-    return EXIDX[id]?.n ? exTitle(id) : id
+/** Resolve catalogue references in Coach prose, including exercises in an unimported
+ * proposal. Dates, years and quantities remain numbers; structured ids are never changed. */
+export function coachText(value, S, context) {
+  const ids = new Set((S?.routines || []).flatMap(r => (r.ex || []).map(e => String(e.id))))
+  for (const w of S?.workouts || []) for (const e of w.entries || []) ids.add(String(e.id))
+  const seen = new Set()
+  const collect = x => {
+    if (!x || typeof x !== 'object' || seen.has(x)) return
+    seen.add(x)
+    for (const [key, v] of Object.entries(x)) {
+      if ((key === 'id' || key === 'exId' || key === 'to') && EXIDX[v]?.n) ids.add(String(v))
+      else if (v && typeof v === 'object') collect(v)
+    }
+  }
+  collect(context)
+  const text = String(value || '')
+  return text.replace(/(?<![\w./:-])\d{4,5}(?![\w/:-]|\.\d)/g, (id, at) => {
+    if (!ids.has(id) || !EXIDX[id]?.n) return id
+    const before = text.slice(0, at), after = text.slice(at + id.length)
+    const explicit = /\b(?:exercise(?:\s+id)?|id)\s*[:#]?\s*$/i.test(before)
+    const quantity = /^\s*(?:%|(?:kg|lbs?|km|m|mph|kph|kmh|seconds?|secs?|minutes?|mins?|hours?|reps?|sets?|calories|kcal|watts?)\b)/i.test(after)
+    const year = !id.startsWith('0') && +id >= 1900 && +id <= 2100
+    const calendarContext = /\b(?:in|since|until|during|year|from|through|before|after)\s*$/i.test(before) || !after.trim()
+    if (!explicit && (quantity || (year && calendarContext))) return id
+    return exTitle(id)
   })
 }
 

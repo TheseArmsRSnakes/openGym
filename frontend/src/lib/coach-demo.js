@@ -238,7 +238,7 @@ export const demoAdapt = (S, { today, entry, reason, activeId } = {}) => start('
     changes,
   }
 })
-export const demoResolve = () => { pending = pending?.kind === 'ask' || pending?.kind === 'adapt' ? waitingProposal(pending.prev) : null; return { ok: true } }
+export const demoResolve = ({ proposalId } = {}) => { if (proposalId && pending?.id !== proposalId) return { ok: true }; pending = pending?.kind === 'ask' || pending?.kind === 'adapt' ? waitingProposal(pending.prev) : null; return { ok: true } }
 export const demoDisclosure = () => ({
   provider: 'demo', providerLabel: t('the configured AI provider'),
   categories: ['plan', 'training', 'bodyweight', 'profile', 'prefs'], version: 1

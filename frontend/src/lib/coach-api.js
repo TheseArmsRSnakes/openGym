@@ -13,6 +13,7 @@ import { t, tn, getLang } from './i18n.js'
 import { useStore } from '../store/useStore.js'
 import { todayForCoach } from './coach-context.js'
 import { useUI } from '../store/useUI.js'
+import { resolutionFor } from '../../../api/coach/core/pending.js'
 
 const POLL_MS = 3000        // a job is running: often enough to feel live
 const IDLE_MS = 60000       // a Coach screen is open but nothing is running
@@ -152,7 +153,7 @@ async function announceProposal(pending) {
 // server has a room; a phone with its own key and the demo both answer locally.
 export const cohortStats = async () => DEMO ? (await demo()).demoCohort(S()) : LOCAL() ? { ok: false, enabled: false } : api('/api/coach/cohort')
 export const setCohortShare = async share => (DEMO || LOCAL()) ? { ok: true, sharing: !!share } : api('/api/coach/cohort/share', { method: 'POST', body: JSON.stringify({ share: !!share }) })
-export const resolvePending = async body => DEMO ? (await demo()).demoResolve() : LOCAL() ? (await local()).localResolve(body) : api('/api/coach/pending/resolve', { method: 'POST', body: JSON.stringify(body) })
+export const resolvePending = async body => DEMO ? (await demo()).demoResolve(body) : LOCAL() ? (await local()).localResolve(body) : api('/api/coach/pending/resolve', { method: 'POST', body: JSON.stringify(body) })
 export const forgetCoach = async () => DEMO ? (await demo()).demoResolve() : LOCAL() ? (await local()).localForget() : api('/api/coach/forget', { method: 'POST', body: '{}' })
 export const disclosure = async () => DEMO ? (await demo()).demoDisclosure() : LOCAL() ? (await local()).localDisclosure() : api('/api/coach/disclosure')
 
@@ -172,7 +173,20 @@ export function useCoachStatus(active = true) {
   const refresh = useCallback(async () => {
     const mine = ++seq.current
     try {
-      const s = await coachStatus()
+      let s = await coachStatus()
+      // A saved decision survives a failed POST or reload. Replay only the acknowledgement,
+      // tied to the proposal id; never replay the routine edit or create another log entry.
+      for (let n = 0; mine === seq.current && s?.pending && n < 3; n++) {
+        const decision = resolutionFor(s.pending, S()?.coach)
+        if (!decision) break
+        try {
+          await resolvePending(decision)
+          s = await coachStatus()
+        } catch {
+          s = { ...s, pending: null, resolutionPending: true }
+          break
+        }
+      }
       // An answer that arrives after a newer request was sent is older than what that request
       // will bring: the idle poll in flight when a run is started must not land after the
       // refresh that follows the start, putting back the run count and last outcome from before.
@@ -181,7 +195,7 @@ export function useCoachStatus(active = true) {
       // A refresh that finds a job in flight — the one the caller just started — must not leave
       // the loop asleep on its idle cadence: without this the card shows up to a minute after
       // the job ended, sitting on "thinking…" the whole time.
-      if (s?.job && loop.current) { clearTimeout(timer.current); timer.current = setTimeout(loop.current, POLL_MS) }
+      if ((s?.job || s?.resolutionPending) && loop.current) { clearTimeout(timer.current); timer.current = setTimeout(loop.current, POLL_MS) }
       return s
     } catch {
       if (mine === seq.current) setState(s => ({ ...s, loading: false }))
@@ -196,7 +210,7 @@ export function useCoachStatus(active = true) {
       const s = await refresh()
       if (stopped) return
       clearTimeout(timer.current)
-      timer.current = setTimeout(tick, s?.job ? POLL_MS : IDLE_MS)
+      timer.current = setTimeout(tick, (s?.job || s?.resolutionPending) ? POLL_MS : IDLE_MS)
     }
     loop.current = tick
     tick()

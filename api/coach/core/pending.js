@@ -29,3 +29,23 @@ export function normalizeDecisions(coach) {
   return { ...coach, log: coach.log.filter(e => !removed.has(e.id)),
     chat: (coach.chat || []).filter(m => !removed.has(m.ref)) };
 }
+
+/** The synced decision log (or a read answer in chat) is the retry journal. Derive the same
+ * acknowledgement after a reload without applying a plan a second time. */
+export function resolutionFor(pending, coach) {
+  if (!pending?.id || !coach) return null;
+  const base = { proposalId: pending.id };
+  if (pending.kind === 'ask') {
+    return (Array.isArray(coach.chat) ? coach.chat : []).some(m => m?.role === 'coach' && m.pid === pending.id)
+      ? { ...base, accepted: ['ask'] } : null;
+  }
+  const entry = (Array.isArray(coach.log) ? coach.log : []).find(e => e?.proposalId === pending.id && e.kind === pending.kind);
+  if (!entry) return null;
+  if (entry.dismissed) return { ...base, dismissed: true };
+  if (entry.kind === 'create') return { ...base, accepted: ['plan'] };
+  if (entry.kind === 'debrief') return { ...base, accepted: ['debrief'] };
+  const decisions = Array.isArray(entry.decisions) ? entry.decisions : [];
+  return { ...base,
+    accepted: decisions.filter(d => d?.status === 'accepted').map(d => d.id),
+    rejected: decisions.filter(d => d?.id && d.status !== 'accepted').map(d => d.id) };
+}

@@ -26,3 +26,5 @@ Before upgrading, fetch official releases, review differences against this branc
 Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (exercise `1161`, Cardio). No duplicate custom exercise is necessary.
 
 Coach decisions hide a resolved proposal immediately and acknowledgements identify the proposal, so stale polls and repeated answer acknowledgements cannot dismiss another proposal. Existing ID-based explanations are displayed with exercise names, and new prompts request names in prose. Notes are informational; only explicit changes have accept/decline decisions.
+
+Saved Coach decisions are the acknowledgement retry journal. The client retries failed acknowledgements while showing a saved-choice notice; server status reconciles decisions already synced to the profile, including when the client has closed. Retries only acknowledge the matching proposal and never reapply edits. Web, paired clients, device-local Coach and demo all honor proposal IDs. Exercise-name display also covers unimported plans, debriefs and adaptation explanations; numeric quantities and dates are preserved.

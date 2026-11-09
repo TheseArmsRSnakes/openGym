@@ -414,3 +414,12 @@ describe('coach-demo — defects found while writing these tests', () => {
     expect(demoStatus().job).toBe(null)
   })
 })
+
+it('a repeated answer acknowledgement preserves the review it restored', () => {
+  const review = think(() => demoReview(state()))
+  const answer = think(() => demoAsk(state(), 'Why?'))
+  demoResolve({ proposalId: answer.id })
+  expect(demoStatus().pending.id).toBe(review.id)
+  demoResolve({ proposalId: answer.id })
+  expect(demoStatus().pending.id).toBe(review.id)
+})

@@ -153,8 +153,9 @@ export function wallClock(now) {
 }
 const deviceZone = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || null } catch { return null } }
 // A read answer gives back the proposal it was asked beside, as the server does.
-export async function localResolve() {
+export async function localResolve({ proposalId } = {}) {
   const d = await loadCoachDevice()
+  if (proposalId && d.pending?.id !== proposalId) return { ok: true }
   await saveCoachDevice({ pending: d.pending?.kind === 'ask' || d.pending?.kind === 'adapt' ? waitingProposal(d.pending.prev) : null })
   return { ok: true }
 }

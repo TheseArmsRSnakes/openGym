@@ -52,7 +52,7 @@ export default function CoachChat() {
   const storeReady = useStore(s => s.ready)
   const toast = useUI(s => s.toast)
   const openSheet = useUI(s => s.openSheet)
-  const { job, pending: serverPending, cap, loading, lastError, last, refresh, maxMessageLen } = useCoachStatus(true)
+  const { job, pending: serverPending, cap, loading, lastError, last, refresh, maxMessageLen, resolutionPending } = useCoachStatus(true)
   // A saved decision wins over a stale poll response while the server clears its slot.
   const pending = serverPending && !(S.coach?.log || []).some(e => e.proposalId === serverPending.id)
     ? serverPending : null
@@ -183,7 +183,7 @@ export default function CoachChat() {
   const showHistory = () => openSheet(close => <HistorySheet S={S} close={close} openSheet={openSheet} />)
   const showCohort = () => openSheet(() => <CohortSheet S={S} update={update} toast={toast} />)
 
-  const idle = !job && !pending
+  const idle = !job && !pending && !resolutionPending
   const menu = () => openSheet(close => <div className="chat-menu">
     <h3>{t('Coach')}</h3>
     <div className="sect-b">
@@ -228,6 +228,10 @@ export default function CoachChat() {
       <button className="iconbtn" onClick={menu} aria-label={t('More')}><Icon name="more" /></button>
     </div>
 
+    {resolutionPending && <div className="pcard" role="status">
+      <p>{t('Your choice is saved. Waiting to send it to Coach.')}</p>
+      <Button size="sm" onClick={refresh}>{t('Retry')}</Button>
+    </div>}
     <div className="msgs">
       <Bubble role="coach">{t('Hi, I’m your Coach. I build your plan from your answers and adjust it from what you actually log. Nothing changes until you say so.')}</Bubble>
 
@@ -369,8 +373,8 @@ function PlanCard({ p, S, update, toast, nav, refresh }) {
       <div className="pcard-hd">
         <div className="pcard-eyebrow">{p.iteration > 1 ? t('Revision {0}', p.iteration) : t('Your plan')}</div>
         <h2 className="pcard-h">{b.name || t('Coach plan')}</h2>
-        {!!b.summary && <p className="pcard-sum">{b.summary}</p>}
-        {!!b.basedOn && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>{b.basedOn}</p>}
+        {!!b.summary && <p className="pcard-sum">{coachText(b.summary, S, b)}</p>}
+        {!!b.basedOn && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>{coachText(b.basedOn, S, b)}</p>}
       </div>
 
       <WeekStrip days={weekDays} ws={weekStartOf(S)} />
@@ -379,7 +383,7 @@ function PlanCard({ p, S, update, toast, nav, refresh }) {
         {b.routines.map((x, i) => <button key={x.id || i} className={'pcard-tab' + (i === tab ? ' on' : '')} onClick={() => setTab(i)}><Icon name={glyphOf(x.emoji)} />{x.name}</button>)}
       </div>}
 
-      {r && <RoutineBlock r={r} unit={S.unit} speedUnit={speedUnitOf(S)} />}
+      {r && <RoutineBlock r={r} S={S} context={b} unit={S.unit} speedUnit={speedUnitOf(S)} />}
 
       <div className="pcard-row">
         {/* In rotation mode the plan goes into the loop, which is what Home reads (#778). */}
@@ -403,12 +407,12 @@ const WeekStrip = ({ days, ws }) => <div className="pcard-week">
   {weekOrder(ws).map(d => <div key={d} className={'pcard-wd' + (days.has(d) ? ' on' : '')}>{t(DAYS[d])}</div>)}
 </div>
 
-const RoutineBlock = ({ r, unit, speedUnit }) => <div className="pcard-rt">
+const RoutineBlock = ({ r, unit, speedUnit, S, context }) => <div className="pcard-rt">
   <div className="pcard-rt-h"><b><Icon name={glyphOf(r.emoji)} />{r.name}</b><span>{tn('{0} exercise', '{0} exercises', r.ex.length)}</span></div>
-  {!!r.why && <div className="pcard-why">{r.why}</div>}
+  {!!r.why && <div className="pcard-why">{coachText(r.why, S, context || r)}</div>}
   {r.ex.map((e, i) => <div key={i} className="pcard-ex">
     <div className="pcard-ex-r"><span className="pcard-ex-n">{exName(e.id)}</span><span className="pcard-ex-l">{exLine(e, unit, speedUnit)}</span></div>
-    {!!e.why && <div className="pcard-ex-w">{e.why}</div>}
+    {!!e.why && <div className="pcard-ex-w">{coachText(e.why, S, context || r)}</div>}
   </div>)}
 </div>
 
@@ -448,7 +452,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
       <div className="pcard-hd">
         <div className="pcard-eyebrow">{t('Suggestions')}</div>
         <h2 className="pcard-h">{tn('{0} suggestion', '{0} suggestions', marked.changes.length)}</h2>
-        {!!marked.summary && <p className="pcard-sum">{coachText(marked.summary, S)}</p>}
+        {!!marked.summary && <p className="pcard-sum">{coachText(marked.summary, S, marked)}</p>}
         {!!marked.evidence?.sessions && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>
           {t('Based on your last {0} sessions', marked.evidence.sessions)}{marked.evidence.from ? ` · ${fmtDate(marked.evidence.from)} – ${fmtDate(marked.evidence.to)}` : ''}
         </p>}
@@ -466,7 +470,7 @@ function ReviewCard({ p, S, update, toast, refresh }) {
         </ChangeRow>
       })}
 
-      <Notes S={S} notes={marked.notes} />
+      <Notes S={S} context={marked} notes={marked.notes} />
 
       <div className="pcard-note">{t('The Coach is not a doctor or a physiotherapist. If something hurts, ask a professional.')}</div>
       <div className="pcard-ft">
@@ -485,7 +489,7 @@ function ChangeRow({ c, S, stale, badge, children }) {
     <div className="grow">
       <div className="pcard-chg-t">{changeTitle(c, S)}{c.routineName ? <span className="dim" style={{ fontWeight: 400 }}> · {c.routineName}</span> : null}</div>
       {vals && <div className="pcard-chg-v"><span className="tag">{vals.before}</span><Icon name="chevronRight" style={{ fontSize: 'var(--fs-caption)', color: 'var(--label-3)' }} /><span className="tag acc">{vals.after}</span></div>}
-      <div className="pcard-chg-w">{coachText(c.why, S)}</div>
+      <div className="pcard-chg-w">{coachText(c.why, S, c)}</div>
       {/* What the change means at the gym, in the app's own words (lib/coach.js changeMeaning). */}
       {changeMeaning(c) && <div className="pcard-chg-m small dim">{changeMeaning(c)}</div>}
       {stale && <div className="pcard-chg-stale">{t('Doesn’t match your plan any more, so it can’t be applied.')}</div>}
@@ -495,9 +499,9 @@ function ChangeRow({ c, S, stale, badge, children }) {
   </div>
 }
 
-const Notes = ({ notes, S }) => !!notes?.length && <div className="pcard-notes">
+const Notes = ({ notes, S, context }) => !!notes?.length && <div className="pcard-notes">
   <div className="small dim">{t('Notes · information only')}</div>
-  {notes.map((n, i) => <div key={i}><Icon name="lightbulb" />{coachText(n, S)}</div>)}
+  {notes.map((n, i) => <div key={i}><Icon name="lightbulb" />{coachText(n, S, context)}</div>)}
 </div>
 
 /* ---------------------------------- insights ---------------------------------- */
@@ -587,15 +591,15 @@ function DebriefBody({ p, S }) {
         </div>)}
       </div>}
     </div>}
-    <DebriefList icon="checkCircle" tint="var(--green)" title={t('What went well')} items={p.highlights} />
-    <DebriefList icon="warning" tint="var(--yellow)" title={t('Worth watching')} items={p.watch} />
-    <DebriefList icon="arrowUp" tint="var(--acc)" title={t('Next time')} items={p.nextTime} />
+    <DebriefList S={S} context={p} icon="checkCircle" tint="var(--green)" title={t('What went well')} items={p.highlights} />
+    <DebriefList S={S} context={p} icon="warning" tint="var(--yellow)" title={t('Worth watching')} items={p.watch} />
+    <DebriefList S={S} context={p} icon="arrowUp" tint="var(--acc)" title={t('Next time')} items={p.nextTime} />
   </>
 }
 const Delta = ({ v, unit, label }) => <span className={'ins-delta' + (v > 0 ? ' up' : v < 0 ? ' down' : '')}>{v > 0 ? '+' : ''}{fmtNum(v)} {unit} {label}</span>
-const DebriefList = ({ icon, tint, title, items }) => !!items?.length && <div className="deb-list">
+const DebriefList = ({ icon, tint, title, items, S, context }) => !!items?.length && <div className="deb-list">
   <div className="deb-list-h" style={{ color: tint }}><Icon name={icon} />{title}</div>
-  {items.map((x, i) => <div key={i} className="deb-item">{x}</div>)}
+  {items.map((x, i) => <div key={i} className="deb-item">{coachText(x, S, context)}</div>)}
 </div>
 const scoreWord = s => s >= 9 ? t('Excellent session') : s >= 7 ? t('Good session') : s >= 5 ? t('Solid session') : t('Tough session')
 
@@ -611,7 +615,7 @@ function DebriefCard({ p, S, update, toast, refresh }) {
       <div className="pcard-hd">
         <div className="pcard-eyebrow">{t('Workout debrief')}</div>
         <h2 className="pcard-h">{p.workout?.name || t('Your last workout')}</h2>
-        {!!p.summary && <p className="pcard-sum">{p.summary}</p>}
+        {!!p.summary && <p className="pcard-sum">{coachText(p.summary, S, p)}</p>}
       </div>
       <DebriefBody p={p} S={S} />
       <div className="pcard-ft">
@@ -645,7 +649,7 @@ function Recap({ entry, S, openSheet }) {
       {state && <span className={'recap-state ' + state.cls}>{state.text}</span>}
     </div>
     <div className="recap-t">{title}</div>
-    {!!entry.summary && <div className="recap-s">{coachText(entry.summary, S)}</div>}
+    {!!entry.summary && <div className="recap-s">{coachText(entry.summary, S, entry)}</div>}
     {kind === 'review' && !!decisions.length && <div className="recap-chips">
       {decisions.slice(0, 4).map(d => <span key={d.id} className={'recap-chip ' + (d.status === 'accepted' ? 'yes' : 'no')}><Icon name={d.status === 'accepted' ? 'check' : 'xmark'} />{changeTitle(d, S)}</span>)}
       {decisions.length > 4 && <span className="recap-chip">+{decisions.length - 4}</span>}
@@ -665,7 +669,7 @@ function ProposalDetail({ entry, S }) {
     <div className="pcard-hd" style={{ paddingInline: 0 }}>
       <div className="pcard-eyebrow">{kind === 'create' ? t('Plan') : kind === 'debrief' ? t('Workout debrief') : kind === 'adapt' ? t('For this workout') : t('Suggestions')} · {fmtDate(isoOf(new Date(entry.at)))}</div>
       <h2 className="pcard-h">{kind === 'create' ? (b?.name || t('Coach plan')) : kind === 'debrief' ? (entry.workout?.name || t('Workout')) : tn('{0} suggestion', '{0} suggestions', entry.decisions?.length || 0)}</h2>
-      {!!entry.summary && <p className="pcard-sum">{coachText(entry.summary, S)}</p>}
+      {!!entry.summary && <p className="pcard-sum">{coachText(entry.summary, S, entry)}</p>}
       {entry.dismissed && <p className="pcard-sum" style={{ color: 'var(--red)' }}>{t('You declined this.')}</p>}
       {!!entry.evidence?.sessions && <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>
         {t('Based on your last {0} sessions', entry.evidence.sessions)}{entry.evidence.from ? ` · ${fmtDate(entry.evidence.from)} – ${fmtDate(entry.evidence.to)}` : ''}
@@ -676,7 +680,7 @@ function ProposalDetail({ entry, S }) {
       <Insights S={S} window={entry.evidence} />
       {(entry.decisions || []).map(d => <ChangeRow key={d.id} c={d} S={S} stale={d.status === 'stale'}
         badge={<span className={'recap-state ' + (d.status === 'accepted' ? 'yes' : 'no')}>{d.status === 'accepted' ? t('Accepted') : d.status === 'stale' ? t('Expired') : t('Declined')}</span>} />)}
-      <Notes S={S} notes={entry.notes} />
+      <Notes S={S} context={entry} notes={entry.notes} />
     </>}
 
     {kind === 'create' && b && <>
@@ -684,7 +688,7 @@ function ProposalDetail({ entry, S }) {
       {b.routines.length > 1 && <div className="pcard-tabs" style={{ paddingInline: 0 }}>
         {b.routines.map((x, i) => <button key={x.id || i} className={'pcard-tab' + (i === tab ? ' on' : '')} onClick={() => setTab(i)}><Icon name={glyphOf(x.emoji)} />{x.name}</button>)}
       </div>}
-      {r && <RoutineBlock r={r} unit={S.unit} speedUnit={speedUnitOf(S)} />}
+      {r && <RoutineBlock r={r} S={S} context={b} unit={S.unit} speedUnit={speedUnitOf(S)} />}
       <p className="pcard-sum" style={{ fontSize: 'var(--fs-footnote)' }}>{entry.rotation ? t('Your rotation was set to this plan.') : entry.scheduled ? t('Your week was set to this schedule.') : t('Imported without changing your week.')}</p>
     </>}
     {kind === 'create' && !b && <p className="pcard-sum">{t('This plan was imported before the app kept proposals; only its summary is left.')}</p>}
@@ -692,7 +696,7 @@ function ProposalDetail({ entry, S }) {
     {kind === 'adapt' && (entry.decisions || []).map(d => <div key={d.id} className="pcard-chg">
       <div className="grow">
         <div className="pcard-chg-t">{adaptTitle(d)}</div>
-        <div className="pcard-chg-w">{d.why}</div>
+        <div className="pcard-chg-w">{coachText(d.why, S, d)}</div>
       </div>
       <span className={'recap-state ' + (d.status === 'accepted' ? 'yes' : 'no')}>{d.status === 'accepted' ? t('Accepted') : t('Declined')}</span>
     </div>)}
