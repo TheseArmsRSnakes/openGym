@@ -7,6 +7,7 @@ import { DEMO, REPO } from '../lib/demo.js'
 import { useState, useRef, useEffect } from 'react'
 import Icon from '../components/Icon.jsx'
 import { Button } from '../components/ui.jsx'
+import { PasswordSignInSheet } from '../components/PasswordAuth.jsx'
 
 function RegisterSheet({ close }) {
   const { setUser, pushState, pullState } = useStore()
@@ -44,6 +45,8 @@ function RegisterSheet({ close }) {
 
 export default function Login() {
   const { setUser, pullState, setGuest } = useStore()
+  const [passwordLoginEnabled, setPasswordLoginEnabled] = useState(false)
+  useEffect(() => { api('/api/config').then(c => setPasswordLoginEnabled(!!c.password_login)).catch(() => {}) }, [])
   const signIn = async () => {
     try { const u = await passkeyLogin(); setUser(u); await pullState(); useUI.getState().toast(t('Welcome back, {0}', u.name)) }
     catch (e) { if (e.name !== 'NotAllowedError' && e.name !== 'AbortError') useUI.getState().toast(e.message || t('Sign-in failed')) }
@@ -75,10 +78,11 @@ export default function Login() {
       <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
       {webauthnOK() ? <>
         <Button variant="primary" icon="person" onClick={signIn}>{t('Sign in with passkey')}</Button>
+        {passwordLoginEnabled && <><div style={{ height: 10 }} /><Button icon="lock" onClick={() => useUI.getState().openSheet(close => <PasswordSignInSheet close={close} />)}>{t('Sign in with password')}</Button></>}
         <div style={{ height: 10 }} />
         <Button icon="sparkles" onClick={() => useUI.getState().openSheet(close => <RegisterSheet close={close} />)}>{t('Create new profile')}</Button>
         <div style={{ height: 10 }} />
-      </> : <div className="card small muted" style={{ textAlign: 'left' }}>{t("This browser doesn't support passkeys — you can still use openGym locally on this device.")}</div>}
+      </> : passwordLoginEnabled ? <><div className="card small muted" style={{ textAlign: 'left' }}>{t("This browser doesn't support passkeys — sign in with your name and password instead.")}</div><Button variant="primary" icon="lock" onClick={() => useUI.getState().openSheet(close => <PasswordSignInSheet close={close} />)}>{t('Sign in with password')}</Button></> : <div className="card small muted" style={{ textAlign: 'left' }}>{t("This browser doesn't support passkeys — you can still use openGym locally on this device.")}</div>}
       <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{t('Passkeys use {0} — no passwords.', BIO)}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>

@@ -7,7 +7,7 @@ import { effectiveRoutine, lastEntryFor, bestWeightFor, buildSets, setsDoneActiv
 import { fmtNum, fmtDate, todayISO, exCount, DAYN } from '../lib/format.js'
 import { beep, vibrate } from '../lib/sound.js'
 import { t } from '../lib/i18n.js'
-import { api } from '../lib/api.js'
+import { api, apiUrl } from '../lib/api.js'
 import Media from '../components/Media.jsx'
 import { startFlow, exercisePicker, exConfigSheet, exerciseDetailSheet, topWeightSheet, finishWorkout, workoutCompleteSheet, confirmSheet } from '../sheets.jsx'
 import Icon from '../components/Icon.jsx'
@@ -231,7 +231,7 @@ function ActiveWorkout() {
     return () => {
       stopped = true; clearInterval(iv)
       // best-effort "left" signal: sendBeacon survives a tab close, fetch covers in-app nav
-      try { navigator.sendBeacon?.('/api/activity', new Blob([JSON.stringify({ active: false })], { type: 'application/json' })) } catch { /* */ }
+      try { navigator.sendBeacon?.(apiUrl('/api/activity'), new Blob([JSON.stringify({ active: false })], { type: 'application/json' })) } catch { /* */ }
       api('/api/activity', { method: 'POST', body: JSON.stringify({ active: false }) }).catch(() => {})
     }
   }, [])

@@ -15,6 +15,7 @@ import { coachAvailable, hasConsent } from '../lib/coach.js'
 import { forgetCoach } from '../lib/coach-api.js'
 import Icon from '../components/Icon.jsx'
 import { Section, Row, SelectRow, Switch, Segmented, Button, TextField } from '../components/ui.jsx'
+import { PasswordRow } from '../components/PasswordAuth.jsx'
 
 export default function Settings() {
   const nav = useNavigate()
@@ -90,6 +91,7 @@ export default function Settings() {
       </> : user ? <>
         <Row icon="personCircle" iconTint="var(--grey)" title={user.name} subtitle={t('Signed in with passkey — data syncs to this profile.')} />
         {user.admin && <Row icon="wrench" iconTint="var(--indigo)" title={t('Admin dashboard')} accessory="chevron" onClick={() => nav('/admin')} />}
+        <PasswordRow />
         <Row icon="signOut" iconTint="var(--red)" title={t('Sign out')} danger onClick={() => confirmSheet({ title: t('Sign out?'), message: t('Your data is synced to your profile first, then cleared from this device.'), confirmText: t('Sign out'), danger: true, onConfirm: () => { signOut(); nav('/home') } })} />
         <Row icon="shield" iconTint="var(--red)" title={t('Sign out everywhere')} subtitle={t('Ends this profile’s sessions on all your devices.')} danger onClick={signOutEverywhere} />
       </> : webauthnOK() ? <>

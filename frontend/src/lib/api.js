@@ -5,8 +5,13 @@ export const BIO = IS_APPLE ? 'Face ID / Touch ID' : IS_ANDROID ? 'fingerprint o
 export const VAULT = IS_APPLE ? 'iCloud Keychain' : IS_ANDROID ? 'Google Password Manager' : 'your password manager'
 export const webauthnOK = () => !!(window.PublicKeyCredential && navigator.credentials)
 
+// The homelab serves openGym below /gym on the same origin as Homepage. Keep API calls
+// under that path so Caddy can strip the prefix before forwarding them to this container.
+const API_PREFIX = location.pathname === '/gym' || location.pathname.startsWith('/gym/') ? '/gym' : ''
+export const apiUrl = path => `${API_PREFIX}${path}`
+
 export async function api(path, opts) {
-  const r = await fetch(path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
+  const r = await fetch(apiUrl(path), Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
   const data = await r.json().catch(() => ({}))
   if (!r.ok) { const e = new Error(data.error || ('HTTP ' + r.status)); e.status = r.status; throw e }
   return data
@@ -56,4 +61,15 @@ export async function passkeyLogin() {
   const cred = await navigator.credentials.get({ publicKey: toRequestOptions(options) })
   const res = await api('/api/login/verify', { method: 'POST', body: JSON.stringify({ cid, credential: credToJSON(cred) }) })
   return res.user
+}
+
+export async function passkeyAssertion() {
+  const { cid, options } = await api('/api/login/options', { method: 'POST', body: '{}' })
+  const cred = await navigator.credentials.get({ publicKey: toRequestOptions(options) })
+  return { cid, credential: credToJSON(cred) }
+}
+
+export async function passwordLogin(name, password) {
+  const r = await api('/api/login/password', { method: 'POST', body: JSON.stringify({ name, password }) })
+  return r.user
 }

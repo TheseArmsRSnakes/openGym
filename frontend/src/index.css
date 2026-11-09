@@ -658,6 +658,8 @@ h4.sec{
 .center{
   position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   width:min(84vw,300px);background:var(--bg-el);border-radius:var(--r-lg);padding:20px;
+  max-height:90vh;max-height:90dvh;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;touch-action:pan-y;
   box-shadow:0 20px 60px -12px rgba(0,0,0,.5);
   animation:pop .28s var(--ease);
 }

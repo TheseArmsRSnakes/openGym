@@ -13,6 +13,8 @@ import * as coachConfig from './coach/config.js';
 import * as coachJobs from './coach/jobs.js';
 import { coachRoutes } from './coach/routes.js';
 import { startCadence } from './coach/cadence.js';
+import { hashPassword, verifyPassword, passwordProblem, passwordLength, nameKey, BusyError, MIN_LENGTH, MAX_LENGTH, warmUp } from './password.js';
+import { createBackoff, createWindow } from './rate-limit.js';
 
 const PORT = +(process.env.PORT || 3000);
 const DATA = process.env.DATA_DIR || '/data';
@@ -23,6 +25,7 @@ const RP_NAME = process.env.RP_NAME || 'openGym';
 // code the admin generates. Both default off so a fresh self-hosted instance stays open.
 const ADMIN_UIDS = (process.env.ADMIN_UIDS || '').split(',').map(s => s.trim()).filter(Boolean);
 const INVITE_ONLY = /^(1|true|yes|on)$/i.test(process.env.INVITE_ONLY || '');
+const PASSWORD_LOGIN = /^(1|true|yes|on)$/i.test(process.env.PASSWORD_LOGIN || '');
 // 90 days keeps someone who trains a few times a week permanently signed in without a stolen
 // cookie staying good for a year. Overridable because a family instance and one on the open
 // internet don't want the same number. Only affects cookies minted from now on — the expiry is
@@ -212,6 +215,39 @@ function sessionCookie(user) {
 }
 const clearCookie = `gymsid=; Path=/; Max-Age=0; HttpOnly;${SECURE} SameSite=Lax`;
 
+/* ---------- optional name-and-password sign-in ---------- */
+const hasPassword = user => !!(user?.pw && typeof user.pw.h === 'string');
+const passwordHolder = key => db.users.find(user => hasPassword(user) && nameKey(user.name) === key) || null;
+const passwordNameTaken = user => db.users.some(other => other.id !== user.id && hasPassword(other) && nameKey(other.name) === nameKey(user.name));
+const passwordAccountFailures = createBackoff({ free: 5, baseMs: 60000, maxMs: 3600000, forgetMs: 86400000 });
+const passwordAddressFailures = createBackoff({ free: 10, baseMs: 60000, maxMs: 3600000, forgetMs: 86400000 });
+const passwordAddressBurst = createWindow({ max: 30, windowMs: 60000 });
+const addressKey = req => String(req.socket?.remoteAddress || 'unknown').replace(/^::ffff:/, '').slice(0, 80);
+function passwordTooMany(res, seconds) {
+  json(res, 429, { error: 'too many attempts', code: 'locked', retryAfter: seconds }, { 'Retry-After': String(seconds) });
+}
+function sameOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true; // non-browser clients do not attach ambient cookies cross-site
+  try { return new URL(origin).origin === new URL(ORIGIN).origin; } catch { return false; }
+}
+async function provePasswordChange(user, body) {
+  const challenge = takeChallenge(body.cid);
+  const cred = challenge && db.creds.find(x => x.id === body.credential?.id && x.userId === user.id);
+  if (!cred) return false;
+  try {
+    const result = await verifyAuthenticationResponse({
+      response: body.credential, expectedChallenge: challenge.challenge,
+      expectedOrigin: ORIGIN, expectedRPID: RP_ID, requireUserVerification: false,
+      credential: { id: cred.id, publicKey: b64uToBuf(cred.publicKey), counter: cred.counter, transports: cred.transports }
+    });
+    if (!result.verified) return false;
+    cred.counter = result.authenticationInfo.newCounter;
+    return true;
+  } catch { return false; }
+}
+
+
 /* ---------- challenge store (in-memory, 5 min TTL) ---------- */
 const challenges = new Map(); // cid -> {challenge, name?, uid?, exp}
 function putChallenge(data) {
@@ -273,7 +309,7 @@ const routes = {
   // the app it was before the feature existed.
   'GET /api/config': async (req, res) => {
     const coach = coachConfig.publicConfig();
-    json(res, 200, { invite_only: INVITE_ONLY, ...(coach ? { coach } : {}) });
+    json(res, 200, { invite_only: INVITE_ONLY, ...(PASSWORD_LOGIN ? { password_login: true } : {}), ...(coach ? { coach } : {}) });
   },
 
   'GET /api/me': async (req, res) => {
@@ -375,6 +411,65 @@ const routes = {
     if (user.disabled) return json(res, 403, { error: 'this account has been disabled' });
     json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
   },
+
+  ...(PASSWORD_LOGIN ? {
+    'POST /api/login/password': async (req, res) => {
+      if (!sameOrigin(req)) return json(res, 403, { error: 'cross-origin request refused' });
+      const body = await readBody(req);
+      const rawName = String(body.name || '').slice(0, 200);
+      const key = nameKey(rawName);
+      const rawPassword = typeof body.password === 'string' ? body.password : '';
+      if (!key || !rawPassword) return json(res, 400, { error: 'name and password required', code: 'missing' });
+      const addr = addressKey(req);
+      const burstWait = passwordAddressBurst.take(addr);
+      const wait = burstWait || passwordAccountFailures.retryAfter(key) || passwordAddressFailures.retryAfter(addr);
+      if (wait) return passwordTooMany(res, wait);
+      const accountAttempt = passwordAccountFailures.attempt(key);
+      const addressAttempt = passwordAddressFailures.attempt(addr);
+      const user = passwordHolder(key);
+      let valid = false;
+      try {
+        const bounded = passwordLength(rawPassword) > MAX_LENGTH ? rawPassword.slice(0, MAX_LENGTH + 1) : rawPassword;
+        valid = await verifyPassword(bounded, user?.pw?.h);
+      } catch (e) {
+        accountAttempt.undo(); addressAttempt.undo();
+        if (e instanceof BusyError) return json(res, 503, { error: 'server is busy — try again in a moment', code: 'busy' }, { 'Retry-After': '2' });
+        throw e;
+      }
+      if (!valid || !user || user.disabled) return json(res, 401, { error: 'wrong name or password', code: 'bad-credentials' });
+      accountAttempt.undo(); addressAttempt.undo();
+      passwordAccountFailures.clear(key); passwordAddressFailures.clear(addr);
+      json(res, 200, { user: { id: user.id, name: user.name, admin: isAdmin(user) } }, { 'Set-Cookie': sessionCookie(user) });
+    },
+    'GET /api/account/password': async (req, res) => {
+      const user = readSession(req);
+      if (!user) return json(res, 401, { error: 'not signed in' });
+      json(res, 200, { set: hasPassword(user), name: user.name, passkeys: db.creds.filter(x => x.userId === user.id).length });
+    },
+    'POST /api/account/password': async (req, res) => {
+      if (!sameOrigin(req)) return json(res, 403, { error: 'cross-origin request refused' });
+      const user = readSession(req);
+      if (!user) return json(res, 401, { error: 'not signed in' });
+      const body = await readBody(req);
+      const problem = passwordProblem(body.next, user.name);
+      if (problem) return json(res, 400, { error: problem === 'too-short' ? `password needs at least ${MIN_LENGTH} characters` : problem === 'too-long' ? `password can have at most ${MAX_LENGTH} characters` : 'password is too easy to guess', code: problem });
+      if (passwordNameTaken(user)) return json(res, 409, { error: 'another profile already signs in with this name', code: 'name-taken' });
+      if (!(await provePasswordChange(user, body))) return json(res, 403, { error: 'confirm with your passkey first', code: 'passkey-required' });
+      let hash;
+      try { hash = await hashPassword(body.next); }
+      catch (e) {
+        if (e instanceof BusyError) return json(res, 503, { error: 'server is busy — try again in a moment', code: 'busy' }, { 'Retry-After': '2' });
+        throw e;
+      }
+      if (readSession(req) !== user) return json(res, 401, { error: 'not signed in' });
+      if (passwordNameTaken(user)) return json(res, 409, { error: 'another profile already signs in with this name', code: 'name-taken' });
+      user.pw = { h: hash, set: new Date().toISOString() };
+      user.sv = sessionVersion(user) + 1;
+      passwordAccountFailures.clear(nameKey(user.name));
+      saveDb();
+      json(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(user) });
+    }
+  } : {}),
 
   'POST /api/logout': async (req, res) => json(res, 200, { ok: true }, { 'Set-Cookie': clearCookie }),
 
@@ -581,6 +676,8 @@ coachJobs.setProposalHook((uid, pending) => {
   });
 });
 startCadence({ users: () => db.users, userNow });
+
+if (PASSWORD_LOGIN) warmUp();
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');

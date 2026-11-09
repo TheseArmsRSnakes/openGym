@@ -264,7 +264,7 @@ function CadenceCard({ coach, update }) {
     {mode === 'every' && <SelectRow icon="dumbbell" iconTint="var(--teal)" title={t('After how many workouts')}
       value={cadence.everyWorkouts || 4}
       onChange={v => patch(c => { c.cadence = { everyWorkouts: v } })}
-      options={[3, 4, 5, 6, 8, 10].map(n => ({ value: n, label: t('{0} workouts', n) }))} />}
+      options={[1, 3, 4, 5, 6, 8, 10].map(n => ({ value: n, label: n === 1 ? t('Every workout') : t('{0} workouts', n) }))} />}
   </Section>
 }
 
