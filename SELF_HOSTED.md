@@ -1,6 +1,8 @@
 # Brent’s self-hosted OpenGym
 
-The deployment source is `TheseArmsRSnakes/openGym`, branch `brent/self-hosted`.
+The deployment source is `TheseArmsRSnakes/openGym`, branch `brent/workout-start-lighting`.
+`brent/self-hosted` holds the separate, prepared native ChatGPT-preview cleanup; it must merge
+this feature and complete owner authorization before replacing the deployed branch.
 The initial capture preserves the Apps VM source as observed on 2026-11-08. The deployment branch now merges official release `v1.4.5`.
 
 ## Source ownership
