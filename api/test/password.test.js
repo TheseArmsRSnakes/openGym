@@ -41,9 +41,7 @@ test('no stored hash, or a malformed one, never verifies — and still does the 
 });
 
 test('policy: length first, then the passwords every script tries first', () => {
-  assert.equal(passwordProblem('', 'Ana'), 'too-short');
-  assert.equal(passwordProblem('short', 'Ana'), null);
-  assert.equal(passwordProblem('1', 'Ana'), null, 'preserves the local owner policy');
+  assert.equal(passwordProblem('short', 'Ana'), 'too-short');
   assert.equal(passwordProblem(12345678901, 'Ana'), 'too-short', 'not a string');
   assert.equal(passwordProblem('x'.repeat(257) + 'yz', 'Ana'), 'too-long');
   assert.equal(passwordProblem('correct horse battery staple '.repeat(9).slice(0, 256), 'Ana'), null, '256 characters are fine');

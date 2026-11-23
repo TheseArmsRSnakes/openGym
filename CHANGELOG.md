@@ -3339,7 +3339,7 @@ the instance secret; Codex's ChatGPT credential stays in Codex's own private cac
 separately from app data and never copied into `coach.json`.
 
 Documented in **[docs/AI_COACH.md](docs/AI_COACH.md)**, with setup walkthroughs for
-[Claude](Claude-setup-instructions.md) and [ChatGPT/Codex](ChatGPT-setup-instructions.md) and
+Claude and ChatGPT/Codex (historical setup guides retired in favor of upstream sign-in) and
 the design rationale in [openGym_AI_Strategy.pdf](openGym_AI_Strategy.pdf).
 
 ### The effort ratings, read back as statistics

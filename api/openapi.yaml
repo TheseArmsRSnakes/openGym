@@ -5983,30 +5983,6 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
-  /api/admin/coach/auth/chatgpt/device:
-    post:
-      tags: [coach]
-      summary: Start the owner’s Codex ChatGPT device sign-in
-      operationId: startCoachChatGPTLogin
-      requestBody:
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                replace: {type: boolean}
-      responses:
-        '200': {description: Device sign-in status and temporary instructions}
-        '403': {description: Administrator required}
-  /api/admin/coach/auth/status:
-    get:
-      tags: [coach]
-      summary: Read the owner’s Codex device sign-in status
-      operationId: getCoachChatGPTLoginStatus
-      responses:
-        '200': {description: Device sign-in status without credentials}
-        '403': {description: Administrator required}
-
 components:
   securitySchemes:
     cookieAuth:

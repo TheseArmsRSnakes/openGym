@@ -297,7 +297,7 @@ test('registration with a password: policy, unique names among password holders,
   const reg = (body, ip = '198.51.100.80') => h.req('POST', '/api/register/password', { body, ip });
   assert.deepEqual((await reg({ name: 'Cleo', password: GOOD })).body.code, 'invite');
   assert.equal((await reg({ name: 'Cleo', password: GOOD, code: 'WRONG' })).status, 403);
-  assert.equal((await reg({ name: 'Cleo', password: '', code: 'invite1' })).body.code, 'too-short');
+  assert.equal((await reg({ name: 'Cleo', password: 'short', code: 'invite1' })).body.code, 'too-short');
   assert.equal((await reg({ name: 'Cleo', password: 'Password123!', code: 'invite1' })).body.code, 'too-common');
   assert.equal((await reg({ name: 'Cleo', password: 'cleo.2024.2024', code: 'invite1' })).body.code, 'too-common');
   assert.equal((await reg({ name: 'ANA', password: GOOD, code: 'invite1' })).status, 409);
@@ -529,8 +529,8 @@ test('an admin reset: a one-time code that ends the old password, works once, an
 
   const redeem = (body, from = ip) => h.req('POST', '/api/login/password-reset', { body, ip: from });
   assert.equal((await redeem({ name: 'Ana', code: 'ZZZZ-ZZZZ-ZZZZ', next: 'a brand new passphrase' })).body.code, 'reset-invalid');
-  // An empty new password is refused without using up the code.
-  assert.equal((await redeem({ name: 'Ana', code, next: '' })).body.code, 'too-short');
+  // A weak new password is refused without using up the code.
+  assert.equal((await redeem({ name: 'Ana', code, next: 'short' })).body.code, 'too-short');
   const r = await redeem({ name: 'ana', code: code.toLowerCase().replace(/-/g, ' '), next: 'a brand new passphrase' });
   assert.equal(r.status, 200);
   assert.ok(r.cookie);
