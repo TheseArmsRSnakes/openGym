@@ -21,7 +21,7 @@ Before upgrading, fetch official releases, review differences against this branc
 
 ## Coach configuration
 
-Native ChatGPT plan sign-in is enabled with `COACH_CHATGPT_PLAN=on`. OpenGym stores the refreshable session in its encrypted provider credential store; provider credentials never enter Git. The custom Codex device-login module, routes, UI and setup guides have been removed. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Upstream’s shared retry policy waits 15 minutes after transient failures and treats permanent failures as a settled review; unread proposals prevent repeat reviews.
+Native ChatGPT plan sign-in is enabled with `COACH_CHATGPT_PLAN=on`. OpenGym stores the refreshable session in its encrypted provider credential store; provider credentials never enter Git. The custom Codex device-login module, routes, UI and setup guides have been removed. Daily caps and model selection are owned by the live Coach configuration and are preserved during updates; provider account limits still apply. Upstream’s shared retry policy waits 15 minutes after transient failures and treats permanent failures as a settled review; unread proposals prevent repeat reviews.
 
 Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (exercise `1161`, Cardio). No duplicate custom exercise is necessary.
 
