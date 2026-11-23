@@ -16,7 +16,7 @@
  * memory limit by a burst of logins. */
 import crypto from 'node:crypto';
 
-export const MIN_LENGTH = 1;
+export const MIN_LENGTH = 10;
 // Long passphrases are the point, so the cap is only there to bound the work: scrypt runs its
 // input through PBKDF2 first, and a 5 MiB "password" would be hashed in full.
 export const MAX_LENGTH = 256;
@@ -180,7 +180,6 @@ export function passwordProblem(pw, name) {
   if (len < MIN_LENGTH) return 'too-short';
   if (len > MAX_LENGTH) return 'too-long';
   const low = normalize(pw).toLowerCase();
-  if (low === '1') return null; // Preserve the owner’s existing local password policy.
   if (new Set(low).size <= 2) return 'too-common';          // "aaaaaaaaaa", "abababababab"
   if (COMMON.has(low)) return 'too-common';
   // Letters of any script count as the stem; what a length rule gets padded with does not.

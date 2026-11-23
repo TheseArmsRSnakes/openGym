@@ -27,7 +27,6 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { HTTP_PROVIDERS, baseUrlFor } from './core/providers.js';
-import { unprivilegedIds } from './adapters/spawn.js';
 import { on as chatgptPlanOn } from './chatgpt-plan.js';
 import { MAX_OUTPUT_TOKENS } from './core/adapters/http.js';
 
@@ -44,16 +43,6 @@ const FILE = path.join(DATA, 'coach.json');
  * So the runtime gets its own mount, and the backup instructions stay true rather than being
  * quietly wrong about what they capture. */
 export const CREDENTIAL_HOME = process.env.COACH_CREDENTIAL_DIR || '/coach-auth';
-export const codexHome = () => CREDENTIAL_HOME;
-export const codexAuthFile = () => path.join(CREDENTIAL_HOME, 'auth.json');
-export const hasCodexAuth = () => fs.existsSync(codexAuthFile());
-export function ensureCodexHome() {
-  fs.mkdirSync(CREDENTIAL_HOME, { recursive: true, mode: 0o700 });
-  const ids = unprivilegedIds();
-  if (ids) fs.chownSync(CREDENTIAL_HOME, ids.uid, ids.gid);
-  fs.chmodSync(CREDENTIAL_HOME, 0o700);
-  return CREDENTIAL_HOME;
-}
 export const COACH_DISABLED = /^(1|true|yes|on)$/i.test(process.env.COACH_DISABLED || '');
 
 // Providers this build can drive. `runtime` is what the adapter runs. Adding one is an adapter
@@ -75,7 +64,7 @@ export const PROVIDERS = {
   // somewhere is CREDENTIAL_HOME — outside ./data, so `tar czf … data/` cannot capture it.
   codex: {
     label: 'Codex (OpenAI)', runtime: 'Codex CLI',
-    apiKeyEnv: 'CODEX_API_KEY', oauthEnv: null, credentialHomeEnv: 'CODEX_HOME', deviceLogin: true
+    apiKeyEnv: 'CODEX_API_KEY', oauthEnv: null, credentialHomeEnv: 'CODEX_HOME'
   },
   // The plain-HTTPS providers — Anthropic, OpenAI, Gemini and any OpenAI-compatible endpoint.
   // Described once in core/providers.js so the phone's picker and this table cannot disagree.
@@ -276,7 +265,6 @@ export function credentialFor(uid) {
   if (bound && bound !== uid) {
     return { ok: false, reason: 'shared-account', message: SHARED_ACCOUNT_REFUSAL, mode: 'instance' };
   }
-  if (cfg.provider === 'codex' && hasCodexAuth()) return { ok: true, auth: null, type: 'oauth', mode: 'instance' };
   const rec = authFor(cfg);
   const auth = rec && rec.data ? decrypt(rec.data) : null;
   if (!auth || !auth.token) {
@@ -301,7 +289,7 @@ export const isPersonalCredential = type => type === 'cli-token' || type === 'oa
  *  only; an API key is shared by every profile on the instance. */
 export function bindInstanceCredential(uid) {
   const cfg = load();
-  const rec = cfg.provider === 'codex' && hasCodexAuth() ? { type: 'oauth' } : authFor(cfg);
+  const rec = authFor(cfg);
   if (cfg.authMode === 'instance' && !boundUidFor(cfg) && cfg.provider !== 'fixture' && rec && isPersonalCredential(rec.type)) {
     save({ boundUid: { ...cfg.boundUid, [cfg.provider]: uid } });
   }
@@ -340,7 +328,6 @@ export function isConnected() {
   if (!isEnabled()) return false;
   if (cfg.provider === 'fixture') return true;
   if (cfg.authMode === 'profile') return true;
-  if (cfg.provider === 'codex' && hasCodexAuth()) return true;
   const rec = authFor(cfg);
   if (!rec) return !!providerMeta(cfg).keyOptional && !!baseUrlFor(cfg.provider, cfg);
   return !!decrypt(rec.data);

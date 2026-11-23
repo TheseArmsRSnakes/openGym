@@ -7,7 +7,6 @@
 import { candidatesFor, discoverLocal } from './core/local-discovery.js';
 import * as cfgStore from './config.js';
 import * as jobs from './jobs.js';
-import * as codexAuth from './codex-auth.js';
 import { computeCohort } from './cohort.js';
 import { adapterFor } from './adapters/index.js';
 import * as chatgptPlan from './chatgpt-plan.js';
@@ -247,7 +246,6 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
            fix: ./data was restored without its `secret`, so the blob is intact and undecryptable,
            and connecting again is the way out. */
         auth: (() => {
-          if (cfg.provider === 'codex' && cfgStore.hasCodexAuth()) return codexAuth.authStatus();
           const meta = cfgStore.providerMeta(cfg);
           const rec = cfgStore.authFor(cfg);
           if (!meta.oauthEnv && !meta.apiKeyEnv) return { state: 'not-required' };
@@ -364,16 +362,6 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       json(res, 200, await adapter.models(cfg, env));
     },
 
-    'POST /api/admin/coach/auth/chatgpt/device': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
-      const body = await readBody(req);
-      try { json(res, 200, codexAuth.startCodexDeviceLogin({ replace: !!body.replace })); }
-      catch (e) { json(res, 400, { error: e.message }); }
-    },
-    'GET /api/admin/coach/auth/status': async (req, res) => {
-      if (!requireAdmin(req, res)) return;
-      json(res, 200, codexAuth.codexDeviceLoginStatus());
-    },
     /* Ollama, LM Studio or llama.cpp next to the api (same compose project, the Docker host, this
        machine), found by asking a fixed list of addresses for their models. Admin only, and the
        list never comes from the request, so it cannot be aimed anywhere else. */
@@ -381,7 +369,6 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       if (!requireAdmin(req, res)) return;
       const hosts = ['ollama', 'lmstudio', 'llama', 'host.docker.internal', '172.17.0.1', 'localhost'];
       json(res, 200, { ok: true, found: await discoverLocal(candidatesFor(hosts)) });
-
     },
 
     /* Connect the instance credential. Deferred while the fixture was the only provider — it
@@ -460,14 +447,12 @@ export function coachRoutes({ json, readBody, readSession, requireAdmin }) {
       const body = await readBody(req);
       const provider = body.provider !== undefined ? String(body.provider) : cfgStore.load().provider;
       if (!cfgStore.PROVIDERS[provider]) return json(res, 400, { error: 'unknown provider' });
-      if (provider === 'codex') await codexAuth.disconnect();
       // A ChatGPT session is ended at OpenAI too, as its docs ask; the local copy goes either way.
       if (provider === CHATGPT) {
         const rec = cfgStore.authFor(cfgStore.load(), CHATGPT);
         const cred = rec && rec.data ? cfgStore.decrypt(rec.data) : null;
         if (cred) await chatgptPlan.revokeCredential(fetch, cred);
       }
-
       cfgStore.saveAuth(provider, null);
       json(res, 200, { ok: true });
     },

@@ -67,7 +67,6 @@ export default function AdminCoach() {
   const openSheet = useUI(s => s.openSheet)
   const [d, setD] = useState(null)
   const [busy, setBusy] = useState(false)
-  const [login, setLogin] = useState(null)
   // The models the endpoint serves, fetched on demand. Seeded from the status call when the
   // stored key already let it list them.
   const [models, setModels] = useState(null)
@@ -89,24 +88,6 @@ export default function AdminCoach() {
   // which reads as a setup that failed (Discord #install-help, 2026-09-19).
   const load = () => api('/api/admin/coach').then(r => { setD(r); setModels(r.knownModels || null); useStore.getState().refreshConfig() }).catch(e => toast(e.message || 'Failed to load'))
   useEffect(() => { load() }, [])
-
-  useEffect(() => {
-    if (!login || !['starting', 'pending'].includes(login.state)) return
-    const timer = setInterval(async () => {
-      try {
-        const next = await api('/api/admin/coach/auth/status')
-        setLogin(next)
-        if (next.state === 'connected') load()
-      } catch (e) { setLogin({ state: 'failed', error: e.message }) }
-    }, 2000)
-    return () => clearInterval(timer)
-  }, [login?.state])
-  const startLogin = async () => {
-    setBusy(true)
-    try { setLogin(await api('/api/admin/coach/auth/chatgpt/device', { method: 'POST', body: JSON.stringify({ replace: true }) })) }
-    catch (e) { toast(e.message) }
-    finally { setBusy(false) }
-  }
 
   const patch = async body => {
     setBusy(true)
@@ -178,9 +159,8 @@ export default function AdminCoach() {
     { title: 'Testing', hint: 'A built-in fake that answers instantly, so the whole loop can be tried without an account.', items: d.providers.filter(p => TESTING_IDS.includes(p.id)) }
   ]
 
-  const hasCredentialStep = !!(meta.setupToken || meta.apiKey || meta.deviceLogin || meta.signIn === 'chatgpt')
+  const hasCredentialStep = !!(meta.setupToken || meta.apiKey || meta.signIn === 'chatgpt')
   const lists = !!(meta.http || meta.signIn === 'chatgpt')
-
   // The model this provider was explicitly GIVEN — as opposed to `d.model`, which falls back to
   // the provider's own default. Both halves of the Model step (the dropdown and the free-text
   // box) read this one value, so they cannot disagree about what is configured.
@@ -282,13 +262,8 @@ export default function AdminCoach() {
         <div className="row" style={{ gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
           <CredentialPill auth={d.auth} />
         </div>
-        {meta.deviceLogin && <>
-          <Button size="sm" disabled={busy} onClick={startLogin}>{authState === 'connected' ? 'Reconnect ChatGPT' : 'Sign in with ChatGPT'}</Button>
-          {login?.instructions && <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{login.instructions}</pre>}
-          {login?.error && <div role="alert">{login.error}</div>}
-        </>}
         {authState === 'connected' ? <>
-          <div className="adm-hint">Connected{d.auth.account ? ' as ' + d.auth.account : ''} via {credentialLabel(d.auth.type)}{d.auth.connectedAt ? ' · added ' + rel(d.auth.connectedAt) : ''}. {d.auth.type === 'chatgpt-cli' ? 'Codex manages the login in its private credential cache.' : 'The key is stored encrypted and is never shown again.'}</div>
+          <div className="adm-hint">Connected{d.auth.account ? ' as ' + d.auth.account : ''} via {credentialLabel(d.auth.type)}{d.auth.connectedAt ? ' · added ' + rel(d.auth.connectedAt) : ''}. The key is stored encrypted and is never shown again.</div>
           <div className="adm-actions">
             {meta.apiKey && <Button size="sm" variant="tinted" icon="lock" disabled={busy}
               onClick={() => openSheet(close => <ApiKeySheet close={close} onDone={load} label={meta.label} placeholder={meta.keyPlaceholder} optional={meta.keyOptional} />)}>Replace key</Button>}

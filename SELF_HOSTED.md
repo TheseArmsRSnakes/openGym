@@ -1,8 +1,6 @@
 # Brent’s self-hosted OpenGym
 
 The deployment source is `TheseArmsRSnakes/openGym`, branch `brent/workout-start-lighting`.
-`brent/self-hosted` holds the separate, prepared native ChatGPT-preview cleanup; it must merge
-this feature and complete owner authorization before replacing the deployed branch.
 The initial capture preserves the Apps VM source as observed on 2026-11-08. The deployment branch now merges official release `v1.4.5`.
 
 ## Source ownership
@@ -11,7 +9,7 @@ The initial capture preserves the Apps VM source as observed on 2026-11-08. The 
 - `upstream`: https://github.com/DuarteSantos8/openGym — official releases.
 - `coach-upstream`: https://github.com/alexpcosta/opengym — existing Coach integration; initial base commit `678bf5bf10446e8997a77d43e89c9b2721d8d0fc`.
 
-Upstream now owns subpath routing, password login, and mobile layouts. Local changes preserve ChatGPT device sign-in, the existing local password policy, and retain proposal acknowledgement recovery. The password policy currently permits one-character passwords; this document records existing behavior rather than changing it.
+Upstream now owns subpath routing, password login, and mobile layouts. Local changes retain proposal acknowledgement recovery and exercise-name rendering. Upstream owns authentication and password policy.
 
 ## Deployment
 
@@ -23,7 +21,7 @@ Before upgrading, fetch official releases, review differences against this branc
 
 ## Coach configuration
 
-`COACH_CREDENTIAL_DIR=/codex` is the sole credential-directory setting. The API receives a separate mount at that location; the unprivileged Coach user must be able to read it. Provider credentials never enter Git. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Automatic review failures wait one hour before retrying, and unread proposals prevent repeat reviews.
+Native ChatGPT plan sign-in is enabled with `COACH_CHATGPT_PLAN=on`. OpenGym stores the refreshable session in its encrypted provider credential store; provider credentials never enter Git. The custom Codex device-login module, routes, UI and setup guides have been removed. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Upstream’s shared retry policy waits 15 minutes after transient failures and treats permanent failures as a settled review; unread proposals prevent repeat reviews.
 
 Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (exercise `1161`, Cardio). No duplicate custom exercise is necessary.
 
@@ -31,7 +29,19 @@ Coach decisions hide a resolved proposal immediately and acknowledgements identi
 
 Saved Coach decisions are the acknowledgement retry journal. The client retries failed acknowledgements while showing a saved-choice notice; server status reconciles decisions already synced to the profile, including when the client has closed. Retries only acknowledge the matching proposal and never reapply edits. Web, paired clients, device-local Coach and demo all honor proposal IDs. Exercise-name display also covers unimported plans, debriefs and adaptation explanations; numeric quantities and dates are preserved.
 
-The 1.4.5 merge retains the Codex CLI device sign-in alongside upstream’s new providers, proposal identity checks, acknowledgement recovery, exercise-name rendering, while upstream’s shared retry policy replaces the local scheduler delay. Container Node builds are pinned to 26.13.1.
+## 1.4.5 overlap review
+
+| Area | Owner after this update | Decision |
+|---|---|---|
+| Subpath routing, password login, mobile layout, exercise media | Upstream | Keep upstream implementation; retired homelab patches stay retired. |
+| Scheduled-review retry policy | Upstream shared `core/due.js` | Remove the local server-only one-hour delay and its redundant test; upstream uses 15 minutes for transient failures and settles permanent failures. |
+| ChatGPT subscription sign-in | Upstream native ChatGPT plan provider | Enable the built-in preview and authorize in Admin → AI Coach. Remove the custom Codex device-login module, routes and UI. |
+| Proposal identity and lost acknowledgements | Local additions | Upstream still lacks proposal-id guards and synced-decision recovery; retain them on server, web, demo and device. |
+| Exercise names in saved Coach prose | Local additions | Upstream normalizes structured ids but does not replace ids in existing explanations; retain name rendering and prompt instructions. |
+| Workout MCP access | Upstream native stdio server and Dockerfile | Build from the current application source; remove the custom Dockerfile and Node proxy. The restricted SSH command only mounts the profile read-only and starts upstream’s entrypoint. |
+| Password length | Upstream | Remove the local one-character exception and restore the built-in policy. Existing password hashes remain usable. |
+
+Container Node builds are pinned to 26.13.1. The API uses upstream’s default target: no CLI or Agent SDK is needed for the native HTTPS provider.
 
 ## Workout lighting events
 
@@ -42,6 +52,4 @@ existing durable outbox key for deduplication. `workout.finished` remains upstre
 event; both payloads include the same `startedAt` so Home Assistant can match its snapshot.
 
 Home Assistant configuration, secrets, scene selection and rollback instructions belong to
-homelab-recovery’s `home-assistant/opengym-workout-lighting.yaml` and Apps VM inventory. This
-branch builds from the currently deployed 1.4.5 code so the separate, still-unauthed native
-ChatGPT-preview migration does not disable the working Coach during the lighting deployment.
+homelab-recovery’s `home-assistant/opengym-workout-lighting.yaml` and Apps VM inventory.
