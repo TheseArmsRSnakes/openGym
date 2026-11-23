@@ -21,7 +21,7 @@ Before upgrading, fetch official releases, review differences against this branc
 
 ## Coach configuration
 
-`COACH_CREDENTIAL_DIR=/codex` is the sole credential-directory setting. The API receives a separate mount at that location; the unprivileged Coach user must be able to read it. Provider credentials never enter Git. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Automatic review failures wait one hour before retrying, and unread proposals prevent repeat reviews.
+`COACH_CREDENTIAL_DIR=/codex` is the sole credential-directory setting. The API receives a separate mount at that location; the unprivileged Coach user must be able to read it. Provider credentials never enter Git. The owner instance uses `caps.perProfileDaily=0` and `caps.instanceDaily=0` (unlimited app runs); provider account limits still apply. Upstream’s shared retry policy waits 15 minutes after transient failures and treats permanent failures as a settled review; unread proposals prevent repeat reviews.
 
 Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (exercise `1161`, Cardio). No duplicate custom exercise is necessary.
 
@@ -29,4 +29,16 @@ Coach decisions hide a resolved proposal immediately and acknowledgements identi
 
 Saved Coach decisions are the acknowledgement retry journal. The client retries failed acknowledgements while showing a saved-choice notice; server status reconciles decisions already synced to the profile, including when the client has closed. Retries only acknowledge the matching proposal and never reapply edits. Web, paired clients, device-local Coach and demo all honor proposal IDs. Exercise-name display also covers unimported plans, debriefs and adaptation explanations; numeric quantities and dates are preserved.
 
-The 1.4.5 merge retains the Codex CLI device sign-in alongside upstream’s new providers, proposal identity checks, acknowledgement recovery, exercise-name rendering, while upstream’s shared retry policy replaces the local scheduler delay. Container Node builds are pinned to 26.13.1.
+## 1.4.5 overlap review
+
+| Area | Owner after this update | Decision |
+|---|---|---|
+| Subpath routing, password login, mobile layout, exercise media | Upstream | Keep upstream implementation; retired homelab patches stay retired. |
+| Scheduled-review retry policy | Upstream shared `core/due.js` | Remove the local server-only one-hour delay and its redundant test; upstream uses 15 minutes for transient failures and settles permanent failures. |
+| ChatGPT subscription sign-in | Existing Codex CLI device flow | Preserve the working CLI credential mount. Upstream’s distinct ChatGPT plan preview remains disabled (`COACH_CHATGPT_PLAN` unset). |
+| Proposal identity and lost acknowledgements | Local additions | Upstream still lacks proposal-id guards and synced-decision recovery; retain them on server, web, demo and device. |
+| Exercise names in saved Coach prose | Local additions | Upstream normalizes structured ids but does not replace ids in existing explanations; retain name rendering and prompt instructions. |
+| Workout MCP access | Existing restricted SSH service | Upstream’s optional remote OAuth MCP is a separate interface; leave it disabled rather than exposing another connector. |
+| Password length | Existing local policy | Upstream owns login; preserve the configured one-character minimum. |
+
+Container Node builds are pinned to 26.13.1. Codex remains pinned to the verified 0.160.0 runtime.
