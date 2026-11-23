@@ -11,17 +11,12 @@
  */
 import * as jobs from './jobs.js';
 import * as cfgStore from './config.js';
-import { isDue } from './core/due.js';
+import { isDue, reviewedAtOf, retryWaiting } from './core/due.js';
 
 // Re-exported so nothing that reached it through this module has to move.
 export { isDue };
 
 const TICK_MS = 60000;
-export const FAILURE_RETRY_MS = 60 * 60 * 1000;
-export function retryAfterFailure(history, now = Date.now()) {
-  const last = [...(history || [])].reverse().find(h => h.trigger === 'scheduled' && h.kind === 'review');
-  return last?.outcome === 'failed' && last.errorClass !== 'unusable' && now - last.at < FAILURE_RETRY_MS;
-}
 
 /**
  * @param {object} deps  { users(): [{id}], userNow(tz): {date,hhmm,weekday}, skip?(uid): bool }
@@ -43,14 +38,14 @@ export function startCadence(deps) {
         // expired proposal, which a phone that stays closed never polls for.
         const st = jobs.status(user.id);
         if (st.job || st.pending) continue;
-        if (retryAfterFailure(jobs.readUser(user.id).history)) continue;
         // Reviewed means the model read those workouts and answered — with a proposal, with
         // "nothing to change", or with an answer that failed validation and was paid for all the
         // same. A call that never reached it (timeout, no runtime, consent, switched off) is retried.
-        const reviewedAt = Math.max(0, ...jobs.readUser(user.id).history
-          .filter(h => h.kind === 'review' && (h.outcome === 'ready' || h.outcome === 'nochange'
-            || (h.outcome === 'failed' && h.errorClass === 'unusable')))
-          .map(h => h.at || 0));
+        // A failure no retry fixes (a refused key, no runtime) counts too, or the tick queued it
+        // again every minute and spent the day's cap on it (core/due.js reviewedAtOf).
+        const history = jobs.readUser(user.id).history;
+        const reviewedAt = reviewedAtOf(history);
+        if (retryWaiting(history)) continue;
         const tz = coach.cadence?.weekly ? (S.reminder?.tz || 'UTC') : null;
         const now = tz ? deps.userNow(tz) : null;
         if (!isDue(coach, S, now, reviewedAt, tz)) continue;

@@ -714,3 +714,30 @@ test('read answers and their already-decided parent recover in order', () => {
   assert.equal(jobs.status(uid).pending, null);
   assert.deepEqual(jobs.readUser(uid).history.map(h => [h.id, h.outcome]), [['answer', 'applied'], ['review', 'dismissed']]);
 });
+
+test('a failed provider call says what went wrong, and keeps the provider’s words on the server', async () => {
+  // The chat used to get one line for every failure, so a quota problem, a revoked key and a
+  // provider that was simply down all read the same. The class is now specific and the short
+  // line rides with it; the provider's own account stays in the instance log, where the owner
+  // reads it, and never on the poll a lifter's app reads.
+  const uid = 'u-failure-line';
+  writeState(DIR, uid, sampleState());
+  cfg.save({ provider: 'fixture' });
+  process.env.FIXTURE_MODE = 'crash';
+  jobs.enqueue(uid, { kind: 'review' });
+  const s = await settle(uid);
+  delete process.env.FIXTURE_MODE;
+
+  const { USER_MESSAGE } = await import('../coach/core/failure.js');
+  const last = lastOutcome(uid);
+  assert.equal(last.outcome, 'failed');
+  assert.equal(last.errorClass, 'provider');
+  assert.equal(last.message, USER_MESSAGE.provider, 'the profile record carries the short line');
+  assert.equal(s.last.message, USER_MESSAGE.provider, 'and so does the poll the chat reads');
+  assert.equal('detail' in s.last, false, 'the provider detail never rides on the user poll');
+
+  const logged = cfg.load().log.at(-1);
+  assert.equal(logged.message, USER_MESSAGE.provider);
+  assert.match(logged.detail, /fixture: simulated crash/, 'the reason is kept in the instance log');
+
+});

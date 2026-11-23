@@ -1,7 +1,7 @@
 # Brent’s self-hosted OpenGym
 
 The deployment source is `TheseArmsRSnakes/openGym`, branch `brent/self-hosted`.
-The initial capture preserves the Apps VM source as observed on 2026-11-08. The deployment branch now merges official release `v1.4.4`.
+The initial capture preserves the Apps VM source as observed on 2026-11-08. The deployment branch now merges official release `v1.4.5`.
 
 ## Source ownership
 
@@ -9,7 +9,7 @@ The initial capture preserves the Apps VM source as observed on 2026-11-08. The 
 - `upstream`: https://github.com/DuarteSantos8/openGym — official releases.
 - `coach-upstream`: https://github.com/alexpcosta/opengym — existing Coach integration; initial base commit `678bf5bf10446e8997a77d43e89c9b2721d8d0fc`.
 
-Upstream now owns subpath routing, password login, and mobile layouts. Local changes preserve ChatGPT device sign-in, the existing local password policy, and add a persisted one-hour retry delay after failed automatic reviews. The password policy currently permits one-character passwords; this document records existing behavior rather than changing it.
+Upstream now owns subpath routing, password login, and mobile layouts. Local changes preserve ChatGPT device sign-in, the existing local password policy, and retain proposal acknowledgement recovery. The password policy currently permits one-character passwords; this document records existing behavior rather than changing it.
 
 ## Deployment
 
@@ -28,3 +28,5 @@ Rowing is included in the upstream catalogue as `rowing (with rowing machine)` (
 Coach decisions hide a resolved proposal immediately and acknowledgements identify the proposal, so stale polls and repeated answer acknowledgements cannot dismiss another proposal. Existing ID-based explanations are displayed with exercise names, and new prompts request names in prose. Notes are informational; only explicit changes have accept/decline decisions.
 
 Saved Coach decisions are the acknowledgement retry journal. The client retries failed acknowledgements while showing a saved-choice notice; server status reconciles decisions already synced to the profile, including when the client has closed. Retries only acknowledge the matching proposal and never reapply edits. Web, paired clients, device-local Coach and demo all honor proposal IDs. Exercise-name display also covers unimported plans, debriefs and adaptation explanations; numeric quantities and dates are preserved.
+
+The 1.4.5 merge retains the Codex CLI device sign-in alongside upstream’s new providers, proposal identity checks, acknowledgement recovery, exercise-name rendering, while upstream’s shared retry policy replaces the local scheduler delay. Container Node builds are pinned to 26.13.1.
