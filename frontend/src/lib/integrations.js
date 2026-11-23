@@ -64,7 +64,7 @@ export const CARDS = [
   {
     id: 'webhook', cat: 'automation', name: 'Webhooks', translate: true, icon: 'webhook', tint: 'var(--indigo)',
     desc: 'Tell Home Assistant, n8n or ntfy when you finish a workout.',
-    syncs: ['A signed JSON message when a workout is finished, a record falls or you weigh in.', 'Sent by your server, from whichever device you logged on.'],
+    syncs: ['A signed JSON message when a workout starts or finishes, a record falls or you weigh in.', 'Sent by your server, from whichever device you logged on.'],
   },
   {
     id: 'coach', cat: 'ai', name: 'AI Coach', translate: true, icon: 'sparkles', tint: 'var(--green)',
@@ -208,6 +208,7 @@ export function directory(ctx) {
 
 // Webhook events, in the order the form offers them.
 export const WEBHOOK_EVENTS = [
+  { id: 'workout.started', label: 'Workout started' },
   { id: 'workout.finished', label: 'Workout finished' },
   { id: 'workout.pr', label: 'New personal record' },
   { id: 'weighin.logged', label: 'Weigh-in logged' },

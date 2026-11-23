@@ -24,7 +24,7 @@ import crypto from 'node:crypto';
 import { createStore } from './store.js';
 import { createOutbox, createBuckets } from './outbox.js';
 import { deriveKey, newId } from './crypto.js';
-import { detectEvents, eventData, envelope, testData, EVENTS } from './events.js';
+import { detectEvents, eventData, envelope, testData, EVENTS, workoutStartedEvent } from './events.js';
 import { webhookProvider } from './providers/webhook.js';
 import { stravaProvider } from './providers/strava.js';
 
@@ -141,6 +141,29 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
     };
   }
 
+  function queueEvents(uid, evs, doc) {
+    if (!active || !store.has(uid)) return 0;
+    // Settings → Modules: Integrations off pauses every connection (nothing is queued meanwhile,
+    // nothing is disconnected). Switched back on, the next new event goes out as usual.
+    if (doc?.modules?.integrations === false) return 0;
+    const conns = store.list(uid).filter(r => providers[r.provider] && !r.paused);
+    if (!conns.length) return 0;
+    let n = 0;
+    for (const ev of evs) {
+      for (const c of conns) {
+        if (!c.events.includes(ev.type) || ev.at < c.createdAt) continue;
+        const eid = newId('evt');
+        const r = outbox.enqueue({
+          id: eid, key: `${c.provider}:${uid}:${c.id}:${ev.type}:${ev.entity}`, uid, conn: c.id, provider: c.provider, ev: ev.type,
+          payload: envelope({ id: eid, type: ev.type, data: eventData(ev, doc), at: ev.at }),
+        });
+        if (r === 'queued') n++;
+        else if (r === 'full') settle(uid, c.id, ev.type, { ok: false, msg: 'Too much waiting to be sent, this one was skipped.' }, false);
+      }
+    }
+    return n;
+  }
+
   const hub = {
     active,
     allowLan,
@@ -254,27 +277,13 @@ export function createIntegrations({ dataDir, secret, env = process.env, now = D
 
     /** After a stored PUT /api/data: queue what the profile's connections asked to hear about. */
     onStateWrite(uid, prev, next) {
-      if (!active || !store.has(uid)) return 0;
-      // Settings → Modules: Integrations off pauses every connection (nothing is queued meanwhile,
-      // nothing is disconnected). Switched back on, the next new event goes out as usual.
-      if (next?.modules?.integrations === false) return 0;
-      const conns = store.list(uid).filter(r => providers[r.provider] && !r.paused);
-      if (!conns.length) return 0;
-      const evs = detectEvents(prev, next, { now: now() });
-      let n = 0;
-      for (const ev of evs) {
-        for (const c of conns) {
-          if (!c.events.includes(ev.type) || ev.at < c.createdAt) continue;
-          const eid = newId('evt');
-          const r = outbox.enqueue({
-            id: eid, key: `${c.provider}:${uid}:${c.id}:${ev.type}:${ev.entity}`, uid, conn: c.id, provider: c.provider, ev: ev.type,
-            payload: envelope({ id: eid, type: ev.type, data: eventData(ev, next), at: ev.at }),
-          });
-          if (r === 'queued') n++;
-          else if (r === 'full') settle(uid, c.id, ev.type, { ok: false, msg: 'Too much waiting to be sent, this one was skipped.' }, false);
-        }
-      }
-      return n;
+      return queueEvents(uid, detectEvents(prev, next, { now: now() }), next);
+    },
+
+    /** Existing signed-in live-workout heartbeat; no in-progress profile is persisted. */
+    onWorkoutActivity(uid, activity, doc) {
+      const ev = workoutStartedEvent(activity, { now: now() });
+      return ev ? queueEvents(uid, [ev], doc) : 0;
     },
 
     removeUser(uid) {

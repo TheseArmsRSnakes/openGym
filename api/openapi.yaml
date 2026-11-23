@@ -6204,7 +6204,7 @@ components:
   schemas:
     IntegrationEvent:
       type: string
-      enum: [workout.finished, workout.pr, weighin.logged]
+      enum: [workout.started, workout.finished, workout.pr, weighin.logged]
       description: >-
         `workout.finished`: a workout reached the server (from any device). `workout.pr`: that
         workout set personal records. `weighin.logged`: a new or changed weigh-in. Only events

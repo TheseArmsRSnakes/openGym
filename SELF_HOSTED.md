@@ -30,3 +30,16 @@ Coach decisions hide a resolved proposal immediately and acknowledgements identi
 Saved Coach decisions are the acknowledgement retry journal. The client retries failed acknowledgements while showing a saved-choice notice; server status reconciles decisions already synced to the profile, including when the client has closed. Retries only acknowledge the matching proposal and never reapply edits. Web, paired clients, device-local Coach and demo all honor proposal IDs. Exercise-name display also covers unimported plans, debriefs and adaptation explanations; numeric quantities and dates are preserved.
 
 The 1.4.5 merge retains the Codex CLI device sign-in alongside upstream’s new providers, proposal identity checks, acknowledgement recovery, exercise-name rendering, while upstream’s shared retry policy replaces the local scheduler delay. Container Node builds are pinned to 26.13.1.
+
+## Workout lighting events
+
+The deployed workout-lighting branch adds `workout.started` to the existing integration hub.
+The native signed-in `/api/activity` heartbeat supplies the name and start timestamp; no active
+workout document is synchronized. Fresh starts are opt-in, expire after two minutes and use the
+existing durable outbox key for deduplication. `workout.finished` remains upstream’s saved-workout
+event; both payloads include the same `startedAt` so Home Assistant can match its snapshot.
+
+Home Assistant configuration, secrets, scene selection and rollback instructions belong to
+homelab-recovery’s `home-assistant/opengym-workout-lighting.yaml` and Apps VM inventory. This
+branch builds from the currently deployed 1.4.5 code so the separate, still-unauthed native
+ChatGPT-preview migration does not disable the working Coach during the lighting deployment.

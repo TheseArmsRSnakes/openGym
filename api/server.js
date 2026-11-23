@@ -3338,6 +3338,10 @@ const routes = {
     if (!user) return json(res, 401, { error: 'not signed in' });
     const body = await readBody(req);
     if (body.active) {
+      // The same signed-in heartbeat drives opt-in start webhooks. Durable outbox keys
+      // prevent re-firing on later pings, navigation, reloads or an API restart.
+      try { integrations.onWorkoutActivity(user.id, body, readStateCached(user.id)); }
+      catch (e) { console.error('integrations workout activity', e); }
       // a fresh row, which also clears any hidden mark
       presence.set(user.id, {
         name: text(body.name).slice(0, 60),

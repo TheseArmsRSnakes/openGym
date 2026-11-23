@@ -13,7 +13,7 @@
  * than the connection itself. Pure, so the tests can feed it documents. */
 import { libraryName } from '../coach/core/library.js';
 
-export const EVENTS = ['workout.finished', 'workout.pr', 'weighin.logged'];
+export const EVENTS = ['workout.started', 'workout.finished', 'workout.pr', 'weighin.logged'];
 export const RECENT_MS = 7 * 86400_000;
 export const MAX_PER_WRITE = 10;
 export const PAYLOAD_VERSION = 1;
@@ -49,6 +49,17 @@ export function detectEvents(prev, next, { now = Date.now() } = {}) {
     out.push({ type: 'weighin.logged', entity: `${b.d.slice(0, 10)}:${w}`, at, data: b });
   }
   return out.sort((a, b) => a.at - b.at).slice(-MAX_PER_WRITE);
+}
+
+/** Live activity is a separate signal: running workouts deliberately stay device-local.
+ * Only a fresh, explicitly dated start is useful to home automation; old resumed/offline
+ * sessions must not turn on lights. The outbox deduplicates the stable start timestamp. */
+export function workoutStartedEvent(activity, { now = Date.now() } = {}) {
+  const start = num(activity?.startedAt);
+  if (activity?.active !== true || !Number.isSafeInteger(start) || start <= 0 ||
+      now - start > 120_000 || start - now > 30_000) return null;
+  return { type: 'workout.started', entity: String(start), at: now,
+    data: { id: String(start), name: text(activity.name, 80), startedAt: new Date(start).toISOString() } };
 }
 
 /* ---------- payloads (docs/INTEGRATIONS.md is the reference) ---------- */
@@ -132,6 +143,7 @@ const weighinPayload = (b, doc) => ({ date: b.d.slice(0, 10), weight: b.w, unit:
 
 /** The `data` of an event, as a receiver gets it. */
 export function eventData(ev, doc) {
+  if (ev.type === 'workout.started') return { workout: ev.data };
   if (ev.type === 'workout.finished') return { workout: workoutPayload(ev.data, doc) };
   if (ev.type === 'workout.pr') return recordsPayload(ev.data, doc);
   if (ev.type === 'weighin.logged') return { weighin: weighinPayload(ev.data, doc) };
@@ -145,6 +157,7 @@ export function envelope({ id, type, data, at = Date.now(), test = false }) {
 
 /** What a "Send test event" delivers: a small made-up workout, marked test: true. */
 export function testData(type, now = Date.now()) {
+  if (type === 'workout.started') return { workout: { id: 'test', name: 'Test workout', startedAt: new Date(now).toISOString() } };
   if (type === 'weighin.logged') return { weighin: { date: new Date(now).toISOString().slice(0, 10), weight: 80, unit: 'kg' } };
   const workout = {
     id: 'test', name: 'Test workout', date: new Date(now).toISOString().slice(0, 10),

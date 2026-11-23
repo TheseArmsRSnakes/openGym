@@ -46,6 +46,7 @@ card says *Needs your server* there.
 
 1. Settings → Integrations → Webhooks → **Connect**.
 2. Paste the URL, give it a name if you like, and pick what to send:
+   - **Workout started** (`workout.started`)
    - **Workout finished** (`workout.finished`)
    - **New personal record** (`workout.pr`)
    - **Weigh-in logged** (`weighin.logged`)
@@ -96,6 +97,22 @@ Every delivery has the same envelope:
 
 Headers: `Content-Type: application/json`, `User-Agent: openGym-Webhook/1`,
 `X-OpenGym-Event` (the type), `X-OpenGym-Delivery` (the id) and `X-OpenGym-Signature`.
+
+**`workout.started`**
+
+Sent from the signed-in workout screen’s live heartbeat, once per start timestamp:
+
+```json
+{"workout":{"id":"1795395600000","name":"Push","startedAt":"2026-11-23T00:00:00.000Z"}}
+```
+
+No running-workout document or exercise data is saved or sent. Guest, tour and past-workout
+editing screens do not send activity. Starts older than two minutes, missing timestamps and
+implausibly future timestamps are ignored, so opening an old/offline workout does not switch
+home lighting. Repeated heartbeats, reloads and API restarts use the same durable outbox key.
+This is opt-in per connection and respects the Integrations module switch. A corresponding
+`workout.finished` carries the same `startedAt` for restoring a snapshot. Lighting receivers
+should ignore test events, reject stale starts and deduplicate retries.
 
 **`workout.finished`**
 

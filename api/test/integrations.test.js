@@ -387,3 +387,29 @@ test('deleting a profile takes its connections and its queue with it', () => {
   assert.deepEqual(r.hub.describe('u1').connections, []);
   assert.equal(r.hub._outbox().snapshot().jobs.length, 0);
 });
+
+test('live starts are minimal, opt-in, fresh and durably deduplicated', async () => {
+  const dir = tmp(), clock = Date.now(), sent = [];
+  const options = { dataDir: dir, secret: SECRET, env: { INTEGRATIONS: 'webhook' }, now: () => clock,
+    transport: async (_url, req) => { sent.push(JSON.parse(req.body)); return { status: 200 }; } };
+  const h = createIntegrations(options);
+  h.connect('u1', 'webhook', { url: 'https://hooks.example.com/start', events: ['workout.started'] });
+  h.connect('u1', 'webhook', { url: 'https://hooks.example.com/finish', events: ['workout.finished'] });
+  const a = { active: true, startedAt: clock, name: 'Legs', private: 'not sent' };
+  assert.equal(h.onWorkoutActivity('u1', a, { modules: { integrations: false } }), 0);
+  for (const bad of [{ ...a, active: false }, { ...a, startedAt: undefined },
+    { ...a, startedAt: clock - 120001 }, { ...a, startedAt: clock + 30001 }]) {
+    assert.equal(h.onWorkoutActivity('u1', bad, {}), 0);
+  }
+  assert.equal(h.onWorkoutActivity('u2', a, {}), 0);
+  assert.equal(h.onWorkoutActivity('u1', a, {}), 1);
+  assert.equal(h.onWorkoutActivity('u1', a, {}), 0);
+  await h._outbox().run();
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].type, 'workout.started');
+  assert.deepEqual(sent[0].data.workout, { id: String(clock), name: 'Legs', startedAt: new Date(clock).toISOString() });
+  assert.equal(h.onWorkoutActivity('u1', a, {}), 0, 'delivered heartbeat stays deduplicated');
+  const restarted = createIntegrations(options);
+  assert.equal(restarted.onWorkoutActivity('u1', a, {}), 0, 'API restart retains delivery identity');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

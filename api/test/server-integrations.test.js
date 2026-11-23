@@ -143,3 +143,23 @@ test('without the home network opened, a LAN receiver is refused', async t => {
   assert.equal((await h.call('POST', '/api/integrations/connect', { provider: 'webhook', url: 'https://192.168.1.20/x' })).status, 400);
   assert.equal((await h.call('POST', '/api/integrations/connect', { provider: 'webhook', url: 'https://hooks.example.com/x' })).status, 200);
 });
+
+test('signed-in live activity emits one start without persisting a workout', async t => {
+  const rx = await receiver(t);
+  const h = await startServer(t, { INTEGRATIONS: 'webhook', INTEGRATIONS_ALLOW_LAN: '1', ALLOWED_PRIVATE_IPS: '127.0.0.1' });
+  const made = await h.call('POST', '/api/integrations/connect', { provider: 'webhook', url: rx.url, events: ['workout.started'] });
+  assert.equal(made.status, 200);
+  const a = { active: true, name: 'Push', startedAt: Date.now() };
+  assert.equal((await h.call('POST', '/api/activity', a, null)).status, 401);
+  await h.call('POST', '/api/activity', { ...a, startedAt: a.startedAt - 300000 });
+  assert.equal((await h.call('POST', '/api/activity', a)).status, 200);
+  await rx.next(1);
+  await h.call('POST', '/api/activity', a);
+  await h.call('POST', '/api/activity', { active: false, reason: 'hidden' });
+  await h.call('POST', '/api/activity', a);
+  await new Promise(r => setTimeout(r, 100));
+  assert.equal(rx.got.length, 1);
+  assert.equal(JSON.parse(rx.got[0].body).data.workout.startedAt, new Date(a.startedAt).toISOString());
+  assert.equal(verifySignature(made.body.reveal.secret, rx.got[0].body, rx.got[0].headers['x-opengym-signature']), true);
+  assert.equal(fs.existsSync(path.join(h.dataDir, 'state-u_a.json')), false);
+});
